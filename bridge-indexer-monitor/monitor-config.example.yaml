@@ -1,0 +1,42 @@
+# Bridge Monitor Configuration Example
+# This config enables monitoring and Telegram notifications for bridge events
+
+# Chain A Configuration (EVM chain)
+chain_a:
+  chain_id: 12  # 10=Ethereum Mainnet, 11=Sepolia, 12=Local/Anvil
+  contract_address: "0x1234567890123456789012345678901234567890"
+  rpc_urls:
+    - "http://localhost:8545"
+    - "http://backup:8545"  # Optional: failover RPC
+  poll_interval: 5  # seconds
+  start_block: 0  # Optional: start from specific block
+  # Optional: auto-discovered if not provided
+  # limiter_address: "0x..."
+  # committee_address: "0x..."
+
+# Chain B Configuration (Starcoin chain)
+chain_b:
+  chain_id: 2  # 0=Mainnet, 1=Testnet, 2=Custom/Local
+  contract_address: "0xefa1e687a64f869193f109f75d0432be"
+  rpc_urls:
+    - "http://localhost:9850"
+  poll_interval: 5
+  start_block: 0
+
+# Telegram Notification Configuration
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"  # Or hardcode
+  chat_id: "${TELEGRAM_CHAT_ID}"      # Or hardcode
+  enabled: true
+  emergency_mention_users:
+    - "username1"      # @username format
+    - "123456789"      # User ID format
+
+# Paired Message Detection (optional)
+paired_message:
+  enabled: true
+  alert_threshold_seconds: 3600  # 1 hour - alert if deposit not claimed
+  check_interval_seconds: 300    # 5 minutes - how often to check
+
+# State file path (optional, default: monitor-state.json)
+state_file: "monitor-state.json"

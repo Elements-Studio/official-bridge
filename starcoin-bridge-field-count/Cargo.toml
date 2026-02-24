@@ -1,0 +1,10 @@
+[package]
+name = "starcoin-bridge-field-count"
+version = "0.1.0"
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+starcoin-bridge-field-count-derive = { path = "derive" }

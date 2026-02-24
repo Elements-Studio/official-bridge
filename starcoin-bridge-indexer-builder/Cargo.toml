@@ -1,0 +1,12 @@
+[package]
+name = "starcoin-bridge-indexer-builder"
+version = "0.1.0"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true

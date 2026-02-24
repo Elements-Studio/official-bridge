@@ -1,0 +1,24 @@
+[package]
+name = "starcoin-rpc-proxy"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "starcoin-rpc-proxy"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+starcoin-rpc-client = { git = "https://github.com/starcoinorg/starcoin.git", branch = "bob/master-native-bridge" }
+starcoin-types = { git = "https://github.com/starcoinorg/starcoin.git", branch = "bob/master-native-bridge" }
+starcoin-bridge-types = { path = "../starcoin-bridge-types" }
+starcoin-bridge-vm-types = { path = "../starcoin-bridge-vm-types" }
+starcoin-bridge-sdk = { path = "../starcoin-bridge-sdk" }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = { workspace = true }
+tracing-subscriber = "0.3"

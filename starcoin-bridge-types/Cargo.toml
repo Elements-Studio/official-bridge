@@ -1,0 +1,23 @@
+[package]
+name = "starcoin-bridge-types"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Now using starcoin-bridge-vm-types (independent of starcoin vm/types)
+serde = { version = "1.0", features = ["derive"] }
+fastcrypto = { path = "../fastcrypto" }
+eyre = "0.6"
+hex = "0.4"
+bcs = "0.1"
+base64ct = { version = "1.5", features = ["alloc"] }
+sha3 = "0.10"
+starcoin-bridge-vm-types = { path = "../starcoin-bridge-vm-types" }
+move-core-types = { workspace = true }
+rand = "0.8"
+ed25519-dalek = "2.0"
+ethers = "2.0"

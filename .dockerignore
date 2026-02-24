@@ -1,0 +1,10 @@
+target/
+.git/
+.gitignore
+*.md
+.env
+*.log
+kube/
+deploy/
+contracts/
+scripts/

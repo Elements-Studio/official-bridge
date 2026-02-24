@@ -1,0 +1,30 @@
+[package]
+name = "starcoin-bridge-keys"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Stub for Starcoin bridge
+anyhow = "1.0"
+
+tracing.workspace = true
+
+# Use starcoin-bridge-types for StarcoinKeyPair definition (which uses fastcrypto)
+starcoin-bridge-types = { path = "../starcoin-bridge-types" }
+
+# Use fastcrypto for key operations (same as starcoin-bridge-types)
+fastcrypto.workspace = true
+
+# k256 for correct Ethereum address calculation (decompress public key)
+k256 = { version = "0.13", features = ["ecdsa"] }
+
+# Hashing for Ethereum address calculation
+sha3 = "0.10"
+
+# CLI dependencies
+clap = { version = "4.0", features = ["derive"] }
+hex = "0.4"
