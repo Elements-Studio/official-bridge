@@ -1,0 +1,82 @@
+# Bridge Monitor Configuration with Validator Health Checking
+# This example shows all features including governance event monitoring
+# and validator health checks
+
+chain_a:
+  chain_id: 0  # Starcoin Mainnet
+  contract_address: "0x..."
+  rpc_urls:
+    - "https://main-seed.starcoin.org"
+    - "https://starcoin.org"
+    - "https://barnard-seed.starcoin.org"  # Backup RPC
+  poll_interval: 5
+  start_block: null
+
+chain_b:
+  chain_id: 10  # Ethereum Mainnet
+  contract_address: "0x..."
+  rpc_urls:
+    - "https://eth.llamarpc.com"
+    - "https://rpc.ankr.com/eth"
+    - "https://eth-mainnet.public.blastapi.io"  # Multiple RPCs for failover
+  poll_interval: 5
+  start_block: null
+  # Optional: Specify governance contract addresses
+  # If not specified, monitor will only track main bridge events
+  limiter_address: "0x..."     # EthBridgeLimiter contract
+  committee_address: "0x..."   # EthBridgeCommittee contract
+
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  chat_id: "${TELEGRAM_CHAT_ID}"
+  enabled: true
+  emergency_mention_users:
+    - "@username1"     # Telegram username
+    - "123456789"      # Or user ID for mentions
+
+paired_message:
+  enabled: true
+  alert_threshold_seconds: 3600  # Alert if deposit not claimed after 1 hour
+  check_interval_seconds: 300    # Check every 5 minutes
+
+# Validator Health Checker Configuration
+validator_health:
+  enabled: true
+  check_interval_seconds: 60     # Check every minute
+  timeout_seconds: 10            # HTTP timeout
+
+# Validator List (only stake=1 validators are monitored)
+validators:
+  - url: "http://validator1.bridge.example.com:9191"
+    stake: 1
+    name: "Validator-1"
+  
+  - url: "http://validator2.bridge.example.com:9191"
+    stake: 1
+    name: "Validator-2"
+  
+  - url: "http://validator3.bridge.example.com:9191"
+    stake: 5001
+    name: "Main-Validator"  # This will be skipped (stake != 1)
+
+# Emergency Pause Configuration (detects unauthorized minting/key compromise)
+emergency_pause:
+  enabled: true
+  detection_window_seconds: 300     # Wait 5 minutes for matching events before alerting
+  auto_pause_enabled: false         # Set to true to auto-execute pause (requires keys/signatures)
+  
+  # Option 1: Use private keys file (for auto-signing)
+  # keys_file: "./emergency-keys.yaml"
+  
+  # Option 2: Use pre-signed pause signatures (safer, no private keys on server)
+  # pause_signatures:
+  #   eth_pause_signatures:
+  #     - member_address: "0x..."
+  #       signature: "0x..."
+  #       voting_power: 5001
+  #   starcoin_pause_signatures:
+  #     - member_address: "0x..."
+  #       signature: "0x..."
+  #       voting_power: 5001
+
+state_file: "monitor-state.json"

@@ -1,0 +1,41 @@
+# Emergency Pause Keys Configuration Template
+#
+# This file contains committee member keys for emergency pause execution.
+# Store this file securely with restricted access (chmod 600).
+#
+# ⚠️  WARNING: This file contains private keys. Never commit to git!
+
+# Committee members with pause authority
+members:
+  # Member 1 - High voting power validator
+  - index: 1
+    eth_private_key: "0x..."  # ETH secp256k1 private key (64 hex chars)
+    eth_address: "0x..."       # Corresponding ETH address
+    bridge_authority_key: "..." # BLS12-381 private key for Starcoin (optional, base64 encoded)
+    voting_power: 5001         # Must reach threshold (e.g., 450 for pause, 5001 for unpause)
+
+  # Member 2 - Backup validator
+  - index: 2
+    eth_private_key: "0x..."
+    eth_address: "0x..."
+    bridge_authority_key: "..."
+    voting_power: 1
+
+  # Member 3 - Backup validator
+  - index: 3
+    eth_private_key: "0x..."
+    eth_address: "0x..."
+    bridge_authority_key: "..."
+    voting_power: 1
+
+# Ethereum contract configuration
+eth:
+  rpc_url: "https://ethereum-sepolia-rpc.publicnode.com"
+  bridge_address: "0x..."  # EthStarcoinBridge contract address
+  chain_id: 11             # Ethereum chain ID (1=mainnet, 11=sepolia, 31337=local)
+
+# Starcoin contract configuration
+starcoin:
+  rpc_url: "http://halley1.seed.starcoin.org:9850"
+  bridge_address: "0x..."  # Starcoin bridge module address
+  chain_id: 1              # Starcoin chain ID (0=mainnet, 1=testnet, 254=dev)

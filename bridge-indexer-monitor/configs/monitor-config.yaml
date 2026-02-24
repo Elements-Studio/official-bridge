@@ -1,0 +1,26 @@
+chain_a:
+  chain_id: 12
+  contract_address: '0x1234'
+  poll_interval: 5
+  rpc_urls:
+  - http://localhost:8545
+  start_block: 0
+chain_b:
+  chain_id: 2
+  contract_address: '0xefa1'
+  poll_interval: 5
+  rpc_urls:
+  - http://localhost:9850
+  start_block: 0
+paired_message:
+  alert_threshold_seconds: 3600
+  check_interval_seconds: 300
+  enabled: true
+state_file: monitor-state.json
+telegram:
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+  emergency_mention_users:
+  - username1
+  - '123456789'
+  enabled: false

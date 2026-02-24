@@ -1,0 +1,67 @@
+[package]
+name = "fastcrypto"
+version = "0.1.9"
+license = "Apache-2.0"
+edition = "2021"
+publish = false
+readme = "../README.md"
+description = "Common cryptographic library used at Starcoin (minimal bridge version)"
+
+[lints]
+workspace = true
+
+[dependencies]
+base64ct = { version = "1.5.3", features = ["alloc"] }
+bs58 = "0.4.0"
+ed25519-consensus = { version = "2.1.0", features = ["serde"] }
+hex = "0.4.3"
+hex-literal = "0.4.1"
+hkdf = { version = "0.12.3", features = ["std"] }
+rand = { version = "0.8.5", features = ["std"] }
+rust_secp256k1 = { version = "0.27.0", package = "secp256k1", features = ["recovery", "rand-std", "bitcoin_hashes", "global-context"] }
+serde = { version = "1.0.152", features = ["derive"] }
+serde_with = { version = "3", default-features = false, features = ["alloc", "macros"] }
+signature = { version = "2.0.0", features = ["rand_core"] }
+tokio = { version = "1.24.1", features = ["sync", "rt", "macros"] }
+generic-array = { version = "0.14.6", features = ["serde"] }
+typenum = "1.16.0"
+auto_ops = "0.3.0"
+derive_more = "0.99.16"
+digest = "0.10.6"
+subtle = "2.4.0"
+once_cell = "1.17.0"
+readonly = "0.2.3"
+sha2 = "0.10.6"
+sha3 = "0.10.6"
+blake2 = "0.10.6"
+thiserror = "1.0.38"
+schemars = "0.8.12"
+bincode = "1.3.3"
+static_assertions = "1.1.0"
+lazy_static = "1.4.0"
+fastcrypto-derive = { path = "../fastcrypto-derive", version = "0.1.3" }
+serde_json = "1.0.93"
+bcs = "0.1.4"
+getrandom = {version = "0.2.15", features = ["js"], optional = true}
+# Needed for groups/secp256k1
+ark-secp256k1 = "0.4.0"
+ark-ec = "0.4.1"
+ark-ff = "0.4.1"
+ark-serialize = "0.4.1"
+num-bigint = "0.4.4"
+bech32 = "0.9.1"
+zeroize = "1.8.2"
+
+[features]
+
+# Allow copying keys
+copy_key = []
+
+# Needs to be enabled for wasm targets.
+wasm = ["dep:getrandom"]
+
+[dev-dependencies]
+criterion = "0.5.1"
+proptest = "1.1.0"
+wycheproof = "0.5.0"
+tracing.workspace = true

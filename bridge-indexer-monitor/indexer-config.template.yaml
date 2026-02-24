@@ -1,0 +1,60 @@
+# Bridge Indexer Configuration Template
+# This template is used by bridge-manager to generate runtime configs
+
+# PostgreSQL Database Configuration
+database_url: "postgres://postgres:postgrespw@localhost:5432/bridge"
+
+# Metrics Server Configuration
+metrics_address: "0.0.0.0:9184"
+
+# Starcoin Chain Configuration
+starcoin:
+  # RPC URL for Starcoin node
+  rpc_api_url: "http://localhost:9850"
+  
+  # Bridge contract address (with 0x prefix)
+  bridge_address: "0xefa1e687a64f869193f109f75d0432be"
+  
+  # Starting block number for indexing (0 = from genesis)
+  start_block: 0
+
+# Ethereum Chain Configuration
+ethereum:
+  # Enable ETH indexing
+  enabled: true
+  
+  # Ethereum RPC URL
+  rpc_url: "http://localhost:8545"
+  
+  # Bridge proxy contract address
+  bridge_address: "0x1234567890123456789012345678901234567890"
+  
+  # Starting block number for ETH syncing
+  start_block: 0
+
+# API Server Configuration (optional)
+api:
+  # Enable API server
+  enabled: false
+  
+  # API server bind address
+  address: "0.0.0.0:3000"
+
+# Monitor Configuration (optional)
+monitor:
+  # Enable bridge monitor with Telegram notifications
+  enabled: false
+  
+  # Path to monitor config file (see monitor-config.template.yaml)
+  config_file: "monitor-config.yaml"
+
+# Indexer Performance Settings
+indexer:
+  # Block buffer size for batch processing
+  block_buffer_size: 1000
+  
+  # Number of concurrent ingestion tasks
+  ingest_concurrency: 20
+  
+  # Retry interval in milliseconds
+  retry_interval_ms: 100

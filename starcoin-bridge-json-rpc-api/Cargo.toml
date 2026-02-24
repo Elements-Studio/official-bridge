@@ -1,0 +1,14 @@
+[package]
+name = "starcoin-bridge-json-rpc-api"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Stub for Starcoin bridge
+async-trait = "0.1"
+eyre = "0.6"
+starcoin-bridge-types = { path = "../starcoin-bridge-types" }

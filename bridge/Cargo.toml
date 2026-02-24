@@ -1,0 +1,85 @@
+[package]
+name = "starcoin-bridge"
+version.workspace = true
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+ethers = "2.0"
+tokio = { workspace = true, features = ["full"] }
+starcoin-bridge-types.workspace = true
+starcoin-bridge-authority-aggregation.workspace = true
+arc-swap.workspace = true
+strum_macros.workspace = true
+num_enum.workspace = true
+move-core-types.workspace = true
+url.workspace = true
+futures.workspace = true
+once_cell.workspace = true
+telemetry-subscribers.workspace = true
+prometheus.workspace = true
+async-trait.workspace = true
+starcoin-metrics.workspace = true
+starcoin-bridge-sdk.workspace = true
+starcoin-bridge-keys.workspace = true
+starcoin-bridge-config.workspace = true
+clap.workspace = true
+tracing.workspace = true
+hex = "0.4"
+bin-version.workspace = true
+bcs.workspace = true
+bs58 = "0.5"
+thiserror.workspace = true
+starcoin-bridge-json-rpc-types.workspace = true
+serde.workspace = true
+serde_with.workspace = true
+serde_json.workspace = true
+eyre.workspace = true
+tempfile.workspace = true
+axum.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+starcoin-rpc-api = { git = "https://github.com/starcoinorg/starcoin", rev = "98eefde70a1059ad6d5b5afa54a7eeb403384dec" }
+starcoin-rpc-server = { git = "https://github.com/starcoinorg/starcoin", rev = "98eefde70a1059ad6d5b5afa54a7eeb403384dec" }
+starcoin-service-registry = { git = "https://github.com/starcoinorg/starcoin", rev = "98eefde70a1059ad6d5b5afa54a7eeb403384dec" }
+fastcrypto.workspace = true
+tap.workspace = true
+rand.workspace = true
+lru.workspace = true
+shared-crypto.workspace = true
+backoff.workspace = true
+enum_dispatch.workspace = true
+starcoin-bridge-json-rpc-api.workspace = true
+starcoin-vm-types.workspace = true
+starcoin-crypto.workspace = true
+bcs-ext.workspace = true
+starcoin-bridge-metrics-push-client.workspace = true
+tokio-util.workspace = true
+hex-literal = { version = "0.3.4", optional = true }
+
+[dev-dependencies]
+starcoin-bridge-config.workspace = true
+maplit = "1.0.2"
+hex-literal = "0.3.4"
+serial_test.workspace = true
+starcoin-test-helper.workspace = true
+starcoin-rpc-client.workspace = true
+starcoin-account-api.workspace = true
+starcoin-config.workspace = true
+starcoin-types.workspace = true
+starcoin-vm-types.workspace = true
+starcoin-transaction-builder.workspace = true
+starcoin-txpool-api.workspace = true
+starcoin-chain.workspace = true
+starcoin-chain-api.workspace = true
+starcoin-consensus.workspace = true
+starcoin-logger.workspace = true
+starcoin-statedb.workspace = true
+starcoin-state-api.workspace = true
+
+
+[features]

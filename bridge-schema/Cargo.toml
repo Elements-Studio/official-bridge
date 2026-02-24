@@ -1,0 +1,19 @@
+[package]
+name = "starcoin-bridge-schema"
+version = "0.1.0"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+diesel = { workspace = true, features = ["serde_json"] }
+diesel_migrations.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+starcoin-bridge-indexer-builder.workspace = true
+starcoin-bridge-field-count.workspace = true
+strum.workspace = true
+strum_macros.workspace = true

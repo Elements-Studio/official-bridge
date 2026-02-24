@@ -1,0 +1,35 @@
+[package]
+name = "starcoin-bridge-cli"
+version.workspace = true
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+ethers = "2.0"
+starcoin-bridge.workspace = true
+starcoin-bridge-sdk.workspace = true
+starcoin-bridge-types.workspace = true
+starcoin-bridge-config.workspace = true
+starcoin-bridge-keys.workspace = true
+starcoin-bridge-json-rpc-types.workspace = true
+shared-crypto.workspace = true
+fastcrypto.workspace = true
+move-core-types.workspace = true
+starcoin-bridge-vm-types.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_with.workspace = true
+serde_json.workspace = true
+telemetry-subscribers.workspace = true
+reqwest.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+rand = "0.8"

@@ -1,0 +1,88 @@
+# Bridge Monitor Configuration Template
+# This template is used by bridge-manager to generate runtime monitor configs
+
+# Chain A Configuration (EVM chain)
+chain_a:
+  chain_id: 12  # 10=Ethereum Mainnet, 11=Sepolia, 12=Local/Anvil
+  contract_address: "0x1234567890123456789012345678901234567890"
+  rpc_urls:
+    - "http://localhost:8545"
+  poll_interval: 5  # seconds
+  start_block: 0  # Optional: start from specific block
+
+# Chain B Configuration (Starcoin chain)
+chain_b:
+  chain_id: 2  # 0=Mainnet, 1=Halley, 2=Custom/Local
+  contract_address: "0xefa1e687a64f869193f109f75d0432be"
+  rpc_urls:
+    - "http://localhost:9850"
+  poll_interval: 5
+  start_block: 0
+
+# Telegram Notification Configuration
+telegram:
+  # Bot token from @BotFather
+  # Use ${VAR_NAME} syntax to read from environment variables
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  
+  # Chat ID where notifications will be sent
+  chat_id: "${TELEGRAM_CHAT_ID}"
+  
+  # Users to mention for emergency events (optional)
+  # You can use environment variable substitution here too
+  # Format: comma-separated list in env var, e.g., TELEGRAM_EMERGENCY_MENTION="@user1,123456789"
+  # Multiple users: TELEGRAM_EMERGENCY_MENTION="@user1,123456789,@user2"
+  emergency_mention_users:
+    - "@username1"      # @username format
+    - "123456789"      # User ID format
+  # Or use environment variable:
+  # emergency_mention_users: ${TELEGRAM_EMERGENCY_MENTION}
+  #
+  # Note: Telegram will be automatically enabled when bot_token and chat_id are provided.
+  #       If environment variables are not set, notifications will be silently skipped.
+
+# Paired Message Detection (optional)
+paired_message:
+  # Enable paired transfer detection
+  enabled: true
+  
+  # Alert if deposit not claimed after this time (seconds)
+  alert_threshold_seconds: 3600  # 1 hour
+  
+  # How often to check for unpaired transfers (seconds)
+  check_interval_seconds: 300    # 5 minutes
+
+# State file path (for resuming from last processed block)
+state_file: "monitor-state.json"
+
+# Emergency Pause Configuration
+# Automatically pause both chains when detecting unauthorized minting
+# See bridge-indexer-monitor/EMERGENCY_PAUSE.md for setup instructions
+emergency_pause:
+  # Detection window in seconds (wait for matching deposit before triggering pause)
+  detection_window_seconds: 300  # 5 minutes (recommended for production)
+  
+  # Path to bridge-cli binary
+  # Supports ${ENV_VAR} substitution, defaults to STARCOIN_BRIDGE_CLI env var
+  bridge_cli_path: "${STARCOIN_BRIDGE_CLI}"
+  
+  # Path to bridge-cli config file (contains RPC URLs and transaction submitter keys)
+  # The keys in this config are for submitting transactions (gas payment), not for multi-sig
+  bridge_cli_config_path: "./bridge-cli-config.yaml"
+  
+  # Pre-signed pause signatures for ETH chain (hex encoded, comma-separated)
+  # These should be generated offline by committee members
+  eth_signatures:
+    - "0x1234567890abcdef..."  # Signature from committee member 1
+    - "0xfedcba0987654321..."  # Signature from committee member 2
+  
+  # Pre-signed pause signatures for Starcoin chain
+  starcoin_signatures:
+    - "0xabcdef1234567890..."
+    - "0x0987654321fedcba..."
+  
+  # Current governance nonce for ETH emergency actions
+  eth_nonce: 0
+  
+  # Current governance nonce for Starcoin emergency actions
+  starcoin_nonce: 0

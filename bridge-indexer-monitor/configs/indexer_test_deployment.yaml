@@ -1,0 +1,21 @@
+api:
+  address: 0.0.0.0:3000
+  enabled: false
+database_url: postgres://postgres:postgrespw@localhost:5432/bridge
+ethereum:
+  bridge_address: '0x1234567890123456789012345678901234567890'
+  enabled: true
+  rpc_url: http://localhost:8545
+  start_block: 0
+indexer:
+  block_buffer_size: 1000
+  ingest_concurrency: 20
+  retry_interval_ms: 100
+metrics_address: 0.0.0.0:9184
+monitor:
+  config_file: monitor-config.yaml
+  enabled: false
+starcoin:
+  bridge_address: '0xefa1e687a64f869193f109f75d0432be'
+  rpc_api_url: http://localhost:9850
+  start_block: 0

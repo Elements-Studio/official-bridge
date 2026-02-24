@@ -1,0 +1,32 @@
+[package]
+name = "starcoin-bridge-sdk"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Wrap Starcoin RPC client
+starcoin-rpc-client = { git = "https://github.com/starcoinorg/starcoin.git", branch = "bob/master-native-bridge" }
+starcoin-rpc-api = { git = "https://github.com/starcoinorg/starcoin.git", branch = "bob/master-native-bridge" }
+starcoin-crypto = { workspace = true }
+starcoin-types = { git = "https://github.com/starcoinorg/starcoin.git", branch = "bob/master-native-bridge" }
+starcoin-bridge-json-rpc-types = { path = "../starcoin-bridge-json-rpc-types" }
+starcoin-bridge-json-rpc-api = { path = "../starcoin-bridge-json-rpc-api" }
+starcoin-bridge-types = { path = "../starcoin-bridge-types" }
+starcoin-bridge-vm-types = { path = "../starcoin-bridge-vm-types" }
+move-core-types = { workspace = true }
+
+anyhow = "1.0"
+async-trait = "0.1"
+eyre = "0.6"
+hex = "0.4"
+log = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+futures = "0.3"
+url = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

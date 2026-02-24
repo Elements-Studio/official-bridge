@@ -1,0 +1,20 @@
+cache*
+.env
+
+network_config.json
+.vscode
+cache/
+out*/
+*.txt
+!remappings.txt
+lcov.info
+broadcast/
+deploy_configs/*.json
+
+dependencies
+
+# Node/NPM
+node_modules/
+package.json
+package-lock.json
+hardhat.config.js

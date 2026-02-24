@@ -1,0 +1,52 @@
+[package]
+name = "starcoin-bridge-indexer-monitor"
+version = "0.1.0"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[features]
+default = []
+# Enable tests that require a real PostgreSQL database (via TempDb)
+db-tests = []
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio.workspace = true
+tokio-util.workspace = true
+anyhow.workspace = true
+starcoin-bridge.workspace = true
+starcoin-bridge-types.workspace = true
+starcoin-bridge-schema.workspace = true
+starcoin-bridge-indexer-alt-metrics.workspace = true
+starcoin-bridge-pg-db.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+bcs.workspace = true
+move-core-types.workspace = true
+diesel.workspace = true
+diesel-async = { workspace = true, features = ["deadpool"] }
+clap = { workspace = true, features = ["env"] }
+url.workspace = true
+starcoin-metrics.workspace = true
+telemetry-subscribers.workspace = true
+prometheus.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml = "0.9"
+ethers = "2.0"
+futures.workspace = true
+axum.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+regex = "1.10"
+
+[dev-dependencies]
+tempfile = "3.8"
+serial_test = "3.0"
+
+[[bin]]
+name = "bridge-indexer-monitor"
+path = "src/main.rs"

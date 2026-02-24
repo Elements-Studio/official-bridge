@@ -1,0 +1,31 @@
+{
+  "committeeMemberStake": [
+    10000
+  ],
+  "committeeMembers": [
+    "0x0000000000000000000000000000000000000000"
+  ],
+  "minCommitteeStakeRequired": 10000,
+  "sourceChainId": 12,
+  "supportedChainIds": [
+    1,
+    2,
+    3
+  ],
+  "supportedChainLimitsInDollars": [
+    1000000000000000,
+    1000000000000000,
+    1000000000000000
+  ],
+  "supportedTokens": [],
+  "tokenPrices": [
+    128000000,
+    4325189000000,
+    259696000000,
+    100000000,
+    100000000
+  ],
+  "tokenIds": [],
+  "starcoinDecimals": [],
+  "weth": "0x0000000000000000000000000000000000000000"
+}

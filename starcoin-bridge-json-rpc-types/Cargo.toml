@@ -1,0 +1,19 @@
+[package]
+name = "starcoin-bridge-json-rpc-types"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Use Starcoin RPC types
+starcoin-rpc-api = { git = "https://github.com/starcoinorg/starcoin.git", branch = "bob/master-native-bridge" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+move-core-types = { git = "https://github.com/starcoinorg/move", rev = "babf994a38cda17b84186c7992f92fb3554347f0" }
+anyhow = "1.0"
+hex = "0.4"
+rand = "0.8"
+starcoin-crypto = { git = "https://github.com/starcoinorg/starcoin-crypto", rev = "a742ddc0674022800341182cbb4c3681807b2f00" }

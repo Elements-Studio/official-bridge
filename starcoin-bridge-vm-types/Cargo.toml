@@ -1,0 +1,33 @@
+[package]
+name = "starcoin-bridge-vm-types"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+bcs = "0.1"
+enum_dispatch = "0.3"
+fastcrypto = { path = "../fastcrypto" }
+hex = { workspace = true }
+itertools = "0.10"
+move-core-types = { workspace = true }
+num_enum = { workspace = true }
+once_cell = { workspace = true }
+rand = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde-name = "0.2"
+serde_json = { workspace = true }
+serde_with = "3.8"
+shared-crypto = { path = "../shared-crypto" }
+static_assertions = "1.1"
+strum_macros = "0.27"
+thiserror = "1.0"
+
+[dev-dependencies]
+proptest = { workspace = true }

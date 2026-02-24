@@ -1,0 +1,36 @@
+# Emergency Pause - Pre-signed Signatures Template
+#
+# Alternative to storing private keys: use pre-signed pause signatures.
+# These signatures can be generated offline on a secure machine and stored here.
+#
+# Generate signatures using the bridge CLI or custom signing tool.
+
+# ETH chain pause signatures
+eth_pause_signatures:
+  # Signature from committee member 1
+  - member_address: "0x..."  # ETH address of signer
+    signature: "0x..."       # Hex-encoded signature bytes
+    voting_power: 5001       # Voting power of this member
+    
+  # Signature from committee member 2 (optional, for redundancy)
+  - member_address: "0x..."
+    signature: "0x..."
+    voting_power: 1
+
+# Starcoin chain pause signatures
+starcoin_pause_signatures:
+  # Signature from committee member 1
+  - member_address: "0x..."  # Starcoin address of signer (32 hex chars)
+    signature: "0x..."        # Hex-encoded signature bytes
+    voting_power: 5001
+    
+  # Signature from committee member 2 (optional, for redundancy)
+  - member_address: "0x..."
+    signature: "0x..."
+    voting_power: 1
+
+# Notes:
+# - Total voting power from signatures must meet the pause threshold (e.g., 450)
+# - Signatures are for emergency pause action (nonce should match current state)
+# - Generate new signatures after each governance nonce increment
+# - Store this file securely (chmod 600)
