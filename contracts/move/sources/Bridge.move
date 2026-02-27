@@ -453,7 +453,7 @@ module Bridge::Bridge {
     }
 
     /// Permissionless entry for emergency operations (pause/unpause) with pre-signed signature.
-    /// Any account can call this function — security is guaranteed by committee signature
+    /// Any account can call this function - security is guaranteed by committee signature
     /// verification inside `execute_system_message`. The submitter only pays gas.
     /// This allows ops teams to execute pre-signed emergency pauses without holding
     /// the bridge admin key.
