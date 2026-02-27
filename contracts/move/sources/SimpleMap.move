@@ -1,0 +1,157 @@
+/// Simple map implementation for Bridge module.
+/// This module provides a solution for sorted maps, that is it has the properties that
+/// 1) Keys point to Values
+/// 2) Each Key must be unique
+/// 3) A Key can be found within O(N) time
+/// 4) The keys are unsorted.
+/// 5) Adds and removals take O(N) time
+module Bridge::SimpleMap {
+    use StarcoinFramework::Errors;
+    use StarcoinFramework::Option;
+    use StarcoinFramework::Vector;
+
+    /// Map key already exists
+    const EKEY_ALREADY_EXISTS: u64 = 1;
+    /// Map key is not found
+    const EKEY_NOT_FOUND: u64 = 2;
+
+    struct SimpleMap<Key, Value> has copy, drop, store {
+        data: vector<Element<Key, Value>>,
+    }
+
+    struct Element<Key, Value> has copy, drop, store {
+        key: Key,
+        value: Value,
+    }
+
+    public fun length<Key: store, Value: store>(map: &SimpleMap<Key, Value>): u64 {
+        Vector::length(&map.data)
+    }
+
+    public fun create<Key: store, Value: store>(): SimpleMap<Key, Value> {
+        SimpleMap {
+            data: Vector::empty(),
+        }
+    }
+
+    public fun keys<Key: copy + store, Value: store>(map: &SimpleMap<Key, Value>): vector<Key> {
+        let keys = Vector::empty<Key>();
+        let len = Vector::length(&map.data);
+        let i = 0;
+        while (i < len) {
+            let element = Vector::borrow(&map.data, i);
+            Vector::push_back(&mut keys, *&element.key);
+            i = i + 1;
+        };
+        keys
+    }
+
+    public fun borrow<Key: store, Value: store>(
+        map: &SimpleMap<Key, Value>,
+        key: &Key,
+    ): &Value {
+        let maybe_idx = find(map, key);
+        assert!(Option::is_some(&maybe_idx), Errors::invalid_argument(EKEY_NOT_FOUND));
+        let idx = Option::extract(&mut maybe_idx);
+        &Vector::borrow(&map.data, idx).value
+    }
+
+    public fun borrow_mut<Key: store, Value: store>(
+        map: &mut SimpleMap<Key, Value>,
+        key: &Key,
+    ): &mut Value {
+        let maybe_idx = find(map, key);
+        assert!(Option::is_some(&maybe_idx), Errors::invalid_argument(EKEY_NOT_FOUND));
+        let idx = Option::extract(&mut maybe_idx);
+        &mut Vector::borrow_mut(&mut map.data, idx).value
+    }
+
+    public fun borrow_index<Key: store, Value: store>(
+        map: &SimpleMap<Key, Value>,
+        i: u64,
+    ): (&Key, &Value) {
+        let e = Vector::borrow<Element<Key, Value>>(&map.data, i);
+        (&e.key, &e.value)
+    }
+
+    public fun borrow_index_mut<Key: store, Value: store>(
+        map: &mut SimpleMap<Key, Value>,
+        i: u64,
+    ): (&mut Key, &mut Value) {
+        let e = Vector::borrow_mut<Element<Key, Value>>(&mut map.data, i);
+        (&mut e.key, &mut e.value)
+    }
+
+    public fun contains_key<Key: store, Value: store>(
+        map: &SimpleMap<Key, Value>,
+        key: &Key,
+    ): bool {
+        let maybe_idx = find(map, key);
+        Option::is_some(&maybe_idx)
+    }
+
+    public fun destroy_empty<Key: store, Value: store>(map: SimpleMap<Key, Value>) {
+        let SimpleMap { data } = map;
+        Vector::destroy_empty(data);
+    }
+
+    public fun add<Key: store, Value: store>(
+        map: &mut SimpleMap<Key, Value>,
+        key: Key,
+        value: Value,
+    ) {
+        let maybe_idx = find(map, &key);
+        assert!(Option::is_none(&maybe_idx), Errors::invalid_argument(EKEY_ALREADY_EXISTS));
+        Vector::push_back(&mut map.data, Element { key, value });
+    }
+
+    /// Insert key/value pair or update an existing key to a new value
+    public fun upsert<Key: store, Value: store>(
+        map: &mut SimpleMap<Key, Value>,
+        key: Key,
+        value: Value
+    ): (Option::Option<Key>, Option::Option<Value>) {
+        let data = &mut map.data;
+        let len = Vector::length(data);
+        let i = 0;
+        while (i < len) {
+            let element = Vector::borrow(data, i);
+            if (&element.key == &key) {
+                Vector::push_back(data, Element { key, value });
+                Vector::swap(data, i, len);
+                let Element { key, value } = Vector::pop_back(data);
+                return (Option::some(key), Option::some(value))
+            };
+            i = i + 1;
+        };
+        Vector::push_back(&mut map.data, Element { key, value });
+        (Option::none(), Option::none())
+    }
+
+    public fun remove<Key: store, Value: store>(
+        map: &mut SimpleMap<Key, Value>,
+        key: &Key,
+    ): (Key, Value) {
+        let maybe_idx = find(map, key);
+        assert!(Option::is_some(&maybe_idx), Errors::invalid_argument(EKEY_NOT_FOUND));
+        let placement = Option::extract(&mut maybe_idx);
+        let Element { key, value } = Vector::swap_remove(&mut map.data, placement);
+        (key, value)
+    }
+
+    fun find<Key: store, Value: store>(
+        map: &SimpleMap<Key, Value>,
+        key: &Key,
+    ): Option::Option<u64> {
+        let leng = Vector::length(&map.data);
+        let i = 0;
+        while (i < leng) {
+            let element = Vector::borrow(&map.data, i);
+            if (&element.key == key) {
+                return Option::some(i)
+            };
+            i = i + 1;
+        };
+        Option::none<u64>()
+    }
+}

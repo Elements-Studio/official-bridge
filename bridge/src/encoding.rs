@@ -1037,7 +1037,7 @@ mod tests {
     /// The message represents an ETH→Starcoin token transfer:
     ///   source_chain = EthCustom(12), target_chain = StarcoinCustom(2)
     ///   source_address = 0x0000...1234 (20 bytes)
-    ///   target_address = 0xe28b41c03c83f4c788ea2e0fc9f5799a (Bridge address)
+    ///   target_address = 0xba0f421cab925857ae31f058c2f027f8 (Bridge address)
     ///   token_id = 2 (ETH), amount = 1000
     ///   nonce = 0
     #[test]
@@ -1049,9 +1049,9 @@ mod tests {
         use starcoin_bridge_types::base_types::StarcoinAddress;
 
         // Use Bridge address as target so tests can use bridge_admin signer
-        // Bridge = 0xe28b41c03c83f4c788ea2e0fc9f5799a
+        // Bridge = 0xba0f421cab925857ae31f058c2f027f8
         let starcoin_addr =
-            StarcoinAddress::new(hex_literal::hex!("e28b41c03c83f4c788ea2e0fc9f5799a"));
+            StarcoinAddress::new(hex_literal::hex!("ba0f421cab925857ae31f058c2f027f8"));
         let eth_addr: EthAddress = "0x0000000000000000000000000000000000001234"
             .parse()
             .unwrap();

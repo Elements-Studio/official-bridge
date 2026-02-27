@@ -486,7 +486,15 @@ async fn main() -> anyhow::Result<()> {
                     bridge_pubkey_bytes,
                     http_rest_url,
                 } = member;
-                let Ok(pubkey) = BridgeAuthorityPublicKey::from_bytes(&bridge_pubkey_bytes) else {
+                // Handle 64-byte raw uncompressed pubkey (x, y without prefix)
+                let pubkey_result = if bridge_pubkey_bytes.len() == 64 {
+                    let mut full_bytes = vec![0x04];
+                    full_bytes.extend_from_slice(&bridge_pubkey_bytes);
+                    BridgeAuthorityPublicKey::from_bytes(&full_bytes)
+                } else {
+                    BridgeAuthorityPublicKey::from_bytes(&bridge_pubkey_bytes)
+                };
+                let Ok(pubkey) = pubkey_result else {
                     output_wrapper.add_error(format!(
                         "Invalid bridge pubkey for validator {}: {:?}",
                         starcoin_bridge_address, bridge_pubkey_bytes
@@ -509,10 +517,11 @@ async fn main() -> anyhow::Result<()> {
                     .cloned()
                     .unwrap_or_else(|| url.clone());
                 let stake = stakes.get(&starcoin_bridge_address).copied().unwrap_or(0);
+                // Store original raw pubkey bytes for output (64-byte uncompressed format)
                 authorities.push((
                     name,
                     starcoin_bridge_address,
-                    pubkey,
+                    bridge_pubkey_bytes.clone(),
                     eth_address,
                     url,
                     stake,
@@ -526,12 +535,13 @@ async fn main() -> anyhow::Result<()> {
                 total_registered_stake: total_stake as f32 / TOTAL_VOTING_POWER as f32 * 100.0,
                 ..Default::default()
             };
-            for (name, starcoin_bridge_address, pubkey, eth_address, url, stake) in authorities {
+            for (name, starcoin_bridge_address, raw_pubkey_bytes, eth_address, url, stake) in authorities {
                 output.committee.push(OutputMember {
                     name: name.clone(),
                     starcoin_bridge_address,
                     eth_address,
-                    pubkey: Hex::encode(pubkey.as_bytes()),
+                    // Output original 64-byte raw pubkey from chain
+                    pubkey: Hex::encode(&raw_pubkey_bytes),
                     url,
                     stake,
                     blocklisted: None,
@@ -584,7 +594,15 @@ async fn main() -> anyhow::Result<()> {
                     http_rest_url,
                     blocklisted,
                 } = member;
-                let Ok(pubkey) = BridgeAuthorityPublicKey::from_bytes(&bridge_pubkey_bytes) else {
+                // Handle 64-byte raw uncompressed pubkey (x, y without prefix)
+                let pubkey_result = if bridge_pubkey_bytes.len() == 64 {
+                    let mut full_bytes = vec![0x04];
+                    full_bytes.extend_from_slice(&bridge_pubkey_bytes);
+                    BridgeAuthorityPublicKey::from_bytes(&full_bytes)
+                } else {
+                    BridgeAuthorityPublicKey::from_bytes(&bridge_pubkey_bytes)
+                };
+                let Ok(pubkey) = pubkey_result else {
                     output_wrapper.add_error(format!(
                         "Invalid bridge pubkey for validator {}: {:?}",
                         starcoin_bridge_address, bridge_pubkey_bytes
@@ -612,10 +630,11 @@ async fn main() -> anyhow::Result<()> {
                     let client_clone = client.clone();
                     ping_tasks.push(client_clone.get(url.clone()).send());
                 }
+                // Store original raw pubkey bytes for output (64-byte uncompressed format)
                 authorities.push((
                     name,
                     starcoin_bridge_address,
-                    pubkey,
+                    bridge_pubkey_bytes.clone(),
                     eth_address,
                     url,
                     voting_power,
@@ -647,15 +666,12 @@ async fn main() -> anyhow::Result<()> {
             };
             let mut total_online_stake = 0;
             for (
-                (name, starcoin_bridge_address, pubkey, eth_address, url, stake, blocklisted),
+                (name, starcoin_bridge_address, raw_pubkey_bytes, eth_address, url, stake, blocklisted),
                 ping_resp,
             ) in authorities.into_iter().zip(ping_tasks_resp)
             {
-                let pubkey = if hex {
-                    Hex::encode(pubkey.as_bytes())
-                } else {
-                    pubkey.to_string()
-                };
+                // Output original 64-byte raw pubkey from chain
+                let pubkey = Hex::encode(&raw_pubkey_bytes);
                 match ping_resp {
                     Some(resp) => {
                         if resp {

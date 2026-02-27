@@ -66,8 +66,19 @@ impl From<[u8; 32]> for BridgeAuthorityPublicKeyBytes {
 
 impl ToFromBytes for BridgeAuthorityPublicKeyBytes {
     // Parse an object from its byte representation
+    // Supports:
+    // - 33 bytes: compressed pubkey (02/03 prefix)
+    // - 64 bytes: raw uncompressed pubkey (x, y without prefix) - auto-prepends 04
+    // - 65 bytes: uncompressed pubkey (04 prefix)
     fn from_bytes(bytes: &[u8]) -> Result<Self, FastCryptoError> {
-        let pk = BridgeAuthorityPublicKey::from_bytes(bytes)?;
+        let pk = if bytes.len() == 64 {
+            // 64-byte raw pubkey: prepend 04 prefix for uncompressed format
+            let mut full_bytes = vec![0x04];
+            full_bytes.extend_from_slice(bytes);
+            BridgeAuthorityPublicKey::from_bytes(&full_bytes)?
+        } else {
+            BridgeAuthorityPublicKey::from_bytes(bytes)?
+        };
         Ok(Self::from(&pk))
     }
 

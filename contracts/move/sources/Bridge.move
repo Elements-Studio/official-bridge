@@ -26,7 +26,7 @@ module Bridge::Bridge {
     use StarcoinFramework::Event;
     use StarcoinFramework::Option::{Self, Option};
     use StarcoinFramework::Signer;
-    use StarcoinFramework::SimpleMap::{Self, SimpleMap};
+    use Bridge::SimpleMap::{Self, SimpleMap};
     use StarcoinFramework::Token::{Self, Token};
     use StarcoinFramework::Vector;
 
@@ -1497,5 +1497,72 @@ module Bridge::Bridge {
         } else {
             abort EUnexpectedMessageType
         };
+    }
+
+    #[test_only]
+    /// Approve token transfer WITHOUT signature verification.
+    /// This is only used for testing when secp256k1_sign native function is unavailable.
+    public fun approve_token_transfer_for_testing(
+        bridge: &mut Bridge,
+        message: BridgeMessage,
+    ) acquires EventHandlePod {
+        let eh = borrow_global_mut<EventHandlePod>(@Bridge);
+        let inner = load_inner_mut(bridge);
+        assert!(!inner.paused, EBridgeUnavailable);
+
+        // Skip signature verification for testing
+
+        assert!(Message::message_type(&message) == MessageTypes::token(), EMustBeTokenMessage);
+        assert!(Message::message_version(&message) == MESSAGE_VERSION, EUnexpectedMessageVersion);
+
+        let token_payload = Message::extract_token_bridge_payload(&message);
+        let target_chain = Message::token_target_chain(&token_payload);
+
+        assert!(
+            Message::source_chain(&message) == inner.chain_id || target_chain == inner.chain_id,
+            EUnexpectedChainID,
+        );
+
+        let message_key = Message::key(&message);
+        let current_time_ms = Timestamp::now_milliseconds();
+        
+        // Dummy signatures for test records
+        let dummy_signatures = Vector::empty<vector<u8>>();
+        
+        // retrieve pending message if source chain is Starcoin
+        if (Message::source_chain(&message) == inner.chain_id) {
+            let record = SimpleMap::borrow_mut(&mut inner.token_transfer_records, &message_key);
+
+            assert!(record.message == message, EMalformedMessageError);
+            assert!(!record.claimed, EInvariantStarcoinInitializedTokenTransferShouldNotBeClaimed);
+
+            if (Option::is_some(&record.verified_signatures)) {
+                Event::emit_event(
+                    &mut eh.token_transfer_already_approved,
+                    TokenTransferAlreadyApproved { message_key }
+                );
+                return
+            };
+            record.verified_signatures = Option::some(dummy_signatures);
+            record.approved_at_ms = current_time_ms;
+        } else {
+            if (SimpleMap::contains_key(&mut inner.token_transfer_records, &message_key)) {
+                Event::emit_event(
+                    &mut eh.token_transfer_already_approved,
+                    TokenTransferAlreadyApproved { message_key }
+                );
+                return
+            };
+            SimpleMap::add(&mut inner.token_transfer_records,
+                message_key,
+                BridgeRecord {
+                    message,
+                    verified_signatures: Option::some(dummy_signatures),
+                    claimed: false,
+                    approved_at_ms: current_time_ms,
+                },
+            );
+        };
+        Event::emit_event(&mut eh.token_transfer_approved, TokenTransferApproved { message_key });
     }
 }

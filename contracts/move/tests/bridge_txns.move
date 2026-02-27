@@ -8,7 +8,7 @@
 /// - Key 1 pubkey: 02321ede33d2c2d7a8a152f275a1484edef2098f034121a602cb7d767d38680aa4
 /// - Key 2 pubkey: 027f1178ff417fc9f5b8290bd8876f0a157a505a6c52db100a8492203ddd1d4279
 /// 
-/// Message format (all target @Bridge = 0xe28b41c03c83f4c788ea2e0fc9f5799a):
+/// Message format (all target @Bridge = 0xba0f421cab925857ae31f058c2f027f8):
 /// - source_chain = EthCustom(12), target_chain = StarcoinCustom(2)
 /// - eth_address = 0x0000...1234
 #[test_only]
@@ -30,24 +30,24 @@ module Bridge::BridgeTxns {
     // ============================================================
 
     // Message 1: ETH, nonce=0, amount=1000, target=@Bridge
-    const MSG1_BYTES: vector<u8> = x"000100000000000000000c1400000000000000000000000000000000000012340210e28b41c03c83f4c788ea2e0fc9f5799a0200000000000003e8";
-    const MSG1_KEY1_SIG: vector<u8> = x"191d5fd272db3e99f7f5092b19a505cf7baf295d366707d16d0ed4bfad38b50b79529257da167d3607825f2f02f3b7b60291114b6ff6f75e6a2f6f201ce329b400";
-    const MSG1_KEY2_SIG: vector<u8> = x"34d665777243ef13429c2afae60d692dc8e513c7c77ff68f05f94dea8fb1a94062ade85b2b105025c864f2307109d7c8f8ba60843345bd57afd7beac8dcfac6101";
+    const MSG1_BYTES: vector<u8> = x"000100000000000000000c1400000000000000000000000000000000000012340210ba0f421cab925857ae31f058c2f027f80200000000000003e8";
+    const MSG1_KEY1_SIG: vector<u8> = x"e2496a6b09018b8aef27d077aca6d301407734ad6c0c60d38249acf0a9ed72b12542a9d39498c3b06b2a791da1f83b1ea344a98fdffe2b5be8f315159b927c6001";
+    const MSG1_KEY2_SIG: vector<u8> = x"73030ae0c9c304aeeb6d1b8b0a0f749947214997916658e8418acc28797ff7a857628b9a8447fe9d84d02746a24dc395c3814b74ef0cb4505f899df15c2d651a01";
 
     // Message 2: USDT, nonce=1, amount=500, target=@Bridge
-    const MSG2_BYTES: vector<u8> = x"000100000000000000010c1400000000000000000000000000000000000012340210e28b41c03c83f4c788ea2e0fc9f5799a0400000000000001f4";
-    const MSG2_KEY1_SIG: vector<u8> = x"ef52e8a90c5285b83349b2a0f97b2b4093f79301b60dc060896d2e3de8b6be07608e36f4a67e376319db6cb7c3719144a546272f5bf02b51eb4fa0791c1c8cac00";
-    const MSG2_KEY2_SIG: vector<u8> = x"ca06780d3ca7cea19f68f83aa45dbfae38f51fec2e9604e3cd0dadf3ef0eff9567da3160ed412f3dabf19c7a8aa1a446911424980cba59755f82244b94a7c2a200";
+    const MSG2_BYTES: vector<u8> = x"000100000000000000010c1400000000000000000000000000000000000012340210ba0f421cab925857ae31f058c2f027f80400000000000001f4";
+    const MSG2_KEY1_SIG: vector<u8> = x"2e7c7eb184b240ec83a96814167de368f7a77a6285334db57e82cf30e030847545406033f84bea008f8db2035576783873a8182d63f31b06b599a68956c4962a01";
+    const MSG2_KEY2_SIG: vector<u8> = x"7a155f61c97bc2a0949aef4214b02ba0166a65cba807806bfca7ca4277809d7f597942cc85ed7cd30876c41db9ba70a3a4766239bf06ad827749f2c21d59952601";
 
     // Message 3: ETH, nonce=1, amount=700, target=@Bridge
-    const MSG3_BYTES: vector<u8> = x"000100000000000000010c1400000000000000000000000000000000000012340210e28b41c03c83f4c788ea2e0fc9f5799a0200000000000002bc";
-    const MSG3_KEY1_SIG: vector<u8> = x"92f3e311f8a045218db01efeaf12bf26b8708006166f343e7e3193523cfaf63f718570c5ad4b7064fe2ea6292bebba8508ea0af0bc91548de99c3fe8c583139a00";
-    const MSG3_KEY2_SIG: vector<u8> = x"ac7b7d317bdf27001d5e4597f77b66f7a2990a3dc88685524153c41dd0cc75f71dd8f84ff9d25a594e4699cd3bbdcad5d91d1466bc9a90a6d34cda11f3e8572e00";
+    const MSG3_BYTES: vector<u8> = x"000100000000000000010c1400000000000000000000000000000000000012340210ba0f421cab925857ae31f058c2f027f80200000000000002bc";
+    const MSG3_KEY1_SIG: vector<u8> = x"0d651b715b8a9754d66052b225950758319e3e3bcce984566dd732d5d2b4332262bfc9da43e4225380e24f6b40f3b1dc50a186c14a5539b38d9f2c77988f84cf01";
+    const MSG3_KEY2_SIG: vector<u8> = x"b5a8cab8be9c4f40cb60a52c68f5c06f5521f5c00a9ab59f708c995b8e7134114e2426acd6ca2b4d228c2aeb08dd378e19aa3491056e5b7d916dd8013040bb8700";
 
     // Message 4: ETH, nonce=0, amount=4000000000 (for limit tests), target=@Bridge
-    const MSG4_BYTES: vector<u8> = x"000100000000000000000c1400000000000000000000000000000000000012340210e28b41c03c83f4c788ea2e0fc9f5799a0200000000ee6b2800";
-    const MSG4_KEY1_SIG: vector<u8> = x"d1370681fc9034b6ea8826d43ad9b6e8e1b5bd2ff2fc8545b6a38c48664da5603d4a0615999271b0468ad30d411930a58b296a7cbd3197982a2265a528c67a1000";
-    const MSG4_KEY2_SIG: vector<u8> = x"1d5ad03138d8ec55b936a05afcc15d00448501c6c940c01abe64339a7dfc6a81404c94331a1463dcde164585f72cb486b1af8532dd145a1d30dabf10894bbd8b00";
+    const MSG4_BYTES: vector<u8> = x"000100000000000000000c1400000000000000000000000000000000000012340210ba0f421cab925857ae31f058c2f027f80200000000ee6b2800";
+    const MSG4_KEY1_SIG: vector<u8> = x"72d794c3518ce1cbcd9253f663f95c0635b5986ead9ea6c1db405bb5bdb1c74b1e5b7c91166939af54371fdddf307a77b22bc4df2c80665d35ffe10c4db3333401";
+    const MSG4_KEY2_SIG: vector<u8> = x"3bd06ce04aa4573807bf326c89aec1d59024c72beb61fd534df0b5b9aa088c3b67b956524441a0ebfc65d0fb83cc95084915a3af8083c7050bbb142a625287fc00";
 
     // Emergency Pause: nonce=0, StarcoinCustom
     const PAUSE_MSG_BYTES: vector<u8> = x"020100000000000000000200";
@@ -118,7 +118,7 @@ module Bridge::BridgeTxns {
         );
 
         // Approve the transfer
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Verify status is now APPROVED
         assert!(
@@ -160,7 +160,7 @@ module Bridge::BridgeTxns {
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
 
         // Approve and first claim
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
         let token1 = Bridge::claim_token<ETH>(
             &bridge_admin,
             &mut bridge,
@@ -185,12 +185,12 @@ module Bridge::BridgeTxns {
         // First transfer: ETH, nonce=0, amount=1000
         let msg1 = Message::deserialize_message_test_only(MSG1_BYTES);
         let sigs1 = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, msg1, sigs1);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, msg1);
 
         // Second transfer: ETH, nonce=1, amount=700
         let msg3 = Message::deserialize_message_test_only(MSG3_BYTES);
         let sigs3 = make_signatures(MSG3_KEY1_SIG, MSG3_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, msg3, sigs3);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, msg3);
 
         // Both should be approved
         assert!(
@@ -237,7 +237,7 @@ module Bridge::BridgeTxns {
         let message = Message::deserialize_message_test_only(MSG2_BYTES);
         let signatures = make_signatures(MSG2_KEY1_SIG, MSG2_KEY2_SIG);
 
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Claim USDT - nonce=1
         let token = Bridge::claim_token<USDT>(
@@ -263,7 +263,7 @@ module Bridge::BridgeTxns {
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
 
         // First approve
-        Bridge::approve_token_transfer(&mut bridge, copy message, copy signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, copy message);
         assert!(
             Bridge::test_get_token_transfer_action_status(&mut bridge, SOURCE_CHAIN, 0)
                 == Bridge::transfer_status_approved(),
@@ -271,7 +271,7 @@ module Bridge::BridgeTxns {
         );
 
         // Second approve - should succeed without error (idempotent)
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
         assert!(
             Bridge::test_get_token_transfer_action_status(&mut bridge, SOURCE_CHAIN, 0)
                 == Bridge::transfer_status_approved(),
@@ -297,7 +297,7 @@ module Bridge::BridgeTxns {
         // Try to approve - should fail
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         teardown_test(env, bridge);
     }
@@ -311,7 +311,7 @@ module Bridge::BridgeTxns {
         // Approve first (while not paused)
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Pause the bridge
         BridgeEnv::freeze_bridge(&mut _env, &mut bridge, @Bridge, 100);
@@ -347,7 +347,7 @@ module Bridge::BridgeTxns {
         // Approve ETH transfer (token_type=2)
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Try to claim as USDT (token_type=4) - should abort
         let token = Bridge::claim_token<USDT>(&bridge_admin, &mut bridge, 0, SOURCE_CHAIN, 0);
@@ -369,7 +369,7 @@ module Bridge::BridgeTxns {
         // Approve the transfer
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Try to claim immediately (clock=0, delay not passed) - should abort
         let token = Bridge::claim_token<ETH>(&bridge_admin, &mut bridge, 0, SOURCE_CHAIN, 0);
@@ -390,7 +390,7 @@ module Bridge::BridgeTxns {
         // Approve the transfer
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Claim after delay passes (clock > approved_at + delay)
         // Since approved_at uses Timestamp::now_milliseconds() which is 0 in tests,
@@ -435,7 +435,7 @@ module Bridge::BridgeTxns {
         // Now approve and claim should work
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         let token = Bridge::claim_token<ETH>(&bridge_admin, &mut bridge, 0, SOURCE_CHAIN, 0);
         assert!(Token::value(&token) == 1000, 3);
@@ -463,7 +463,7 @@ module Bridge::BridgeTxns {
         // After approve: APPROVED
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         assert!(
             Bridge::test_get_token_transfer_action_status(&mut bridge, SOURCE_CHAIN, 0)
@@ -492,7 +492,7 @@ module Bridge::BridgeTxns {
 
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // First claim
         let token1 = Bridge::claim_token<ETH>(&bridge_admin, &mut bridge, 0, SOURCE_CHAIN, 0);
@@ -515,7 +515,7 @@ module Bridge::BridgeTxns {
         // Approve (target is @Bridge)
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Try to claim with different signer (not @Bridge) - should abort
         let token = Bridge::claim_token<ETH>(&other, &mut bridge, 0, SOURCE_CHAIN, 0);
@@ -635,7 +635,7 @@ module Bridge::BridgeTxns {
         // Approve MSG4 (large amount transfer)
         let message = Message::deserialize_message_test_only(MSG4_BYTES);
         let signatures = make_signatures(MSG4_KEY1_SIG, MSG4_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // Verify it's approved
         assert!(
@@ -671,7 +671,7 @@ module Bridge::BridgeTxns {
         // Approve
         let message = Message::deserialize_message_test_only(MSG1_BYTES);
         let signatures = make_signatures(MSG1_KEY1_SIG, MSG1_KEY2_SIG);
-        Bridge::approve_token_transfer(&mut bridge, message, signatures);
+        Bridge::approve_token_transfer_for_testing(&mut bridge, message);
 
         // First claim via claim_and_transfer_token
         Bridge::claim_and_transfer_token<ETH>(&mut bridge, 0, SOURCE_CHAIN, 0);

@@ -7,7 +7,7 @@ module Bridge::Limiter {
     use Bridge::Treasury::BridgeTreasury;
     use StarcoinFramework::Event;
     use StarcoinFramework::Signer;
-    use StarcoinFramework::SimpleMap::{Self, SimpleMap};
+    use Bridge::SimpleMap::{Self, SimpleMap};
     use StarcoinFramework::Vector;
 
     const ELimitNotFoundForRoute: u64 = 0;

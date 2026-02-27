@@ -11,9 +11,8 @@ module Bridge::CommitteeTest {
         make_bridge_committee, make_committee_member
     };
     use Bridge::Crypto;
-    use Bridge::EcdsaK1;
     use Bridge::Message;
-    use StarcoinFramework::SimpleMap::{Self, SimpleMap};
+    use Bridge::SimpleMap::{Self, SimpleMap};
     use StarcoinFramework::Vector;
 
     // Error constants with category codes (Errors::invalid_state wraps with category 1)
@@ -37,17 +36,12 @@ module Bridge::CommitteeTest {
     const VALIDATOR2_PUBKEY: vector<u8> =
         x"027f1178ff417fc9f5b8290bd8876f0a157a505a6c52db100a8492203ddd1d4279";
 
-    /// Helper function to convert compressed pubkey to raw 64-byte pubkey (for map key)
-    fun compressed_to_raw_pubkey(compressed: vector<u8>): vector<u8> {
-        let uncompressed = EcdsaK1::decompress_pubkey(&compressed);
-        let raw_pubkey = Vector::empty<u8>();
-        let j = 1; // Skip 0x04 prefix
-        while (j < 65) {
-            Vector::push_back(&mut raw_pubkey, *Vector::borrow(&uncompressed, j));
-            j = j + 1;
-        };
-        raw_pubkey
-    }
+    // Pre-computed 64-byte uncompressed pubkeys (without 04 prefix)
+    // These are used as map keys for committee members
+    const VALIDATOR1_RAW_PUBKEY: vector<u8> =
+        x"321ede33d2c2d7a8a152f275a1484edef2098f034121a602cb7d767d38680aa4abcfe1a969c7143c8a983cfa9e44ff6494e9802ebff1db64df53ff1c992f556c";
+    const VALIDATOR2_RAW_PUBKEY: vector<u8> =
+        x"7f1178ff417fc9f5b8290bd8876f0a157a505a6c52db100a8492203ddd1d42793c8b33ae43a7d969ca006fa7b20a4d09c5400524b7f0e1e27cd5646e9af6926a";
 
     public fun active_validator_addresses(): SimpleMap<address, u64> {
         let voting_powers = SimpleMap::create<address, u64>();
@@ -259,25 +253,21 @@ module Bridge::CommitteeTest {
 
         // Use raw 64-byte pubkey as map key (matches what ecdsa_recover returns)
         // Each validator has voting_power = 1, so two validators (total 2) meet token threshold (2)
-        let bridge_pubkey_bytes = VALIDATOR1_PUBKEY;
-        let raw_pubkey1 = compressed_to_raw_pubkey(bridge_pubkey_bytes);
         SimpleMap::add(&mut members,
-            raw_pubkey1,
+            VALIDATOR1_RAW_PUBKEY,
             make_committee_member(
-                bridge_pubkey_bytes,
+                VALIDATOR1_RAW_PUBKEY,
                 1,
                 b"https://127.0.0.1:9191",
                 false,
             ),
         );
 
-        let bridge_pubkey_bytes = VALIDATOR2_PUBKEY;
-        let raw_pubkey2 = compressed_to_raw_pubkey(bridge_pubkey_bytes);
         SimpleMap::add(
             &mut members,
-            raw_pubkey2,
+            VALIDATOR2_RAW_PUBKEY,
             make_committee_member(
-                bridge_pubkey_bytes,
+                VALIDATOR2_RAW_PUBKEY,
                 1,
                 b"https://127.0.0.1:9192",
                 false,

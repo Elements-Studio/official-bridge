@@ -10,9 +10,10 @@ module Bridge::Committee {
     use StarcoinFramework::Errors;
     use StarcoinFramework::Event;
     use StarcoinFramework::Hash;
+    use StarcoinFramework::Option;
     use StarcoinFramework::Signer;
-    use StarcoinFramework::SimpleMap;
-    use StarcoinFramework::SimpleMap::SimpleMap;
+    use Bridge::SimpleMap;
+    use Bridge::SimpleMap::SimpleMap;
     use StarcoinFramework::Vector;
 
     const ESignatureBelowThreshold: u64 = 0;
@@ -25,7 +26,11 @@ module Bridge::Committee {
 
     const STARCOIN_MESSAGE_PREFIX: vector<u8> = b"STARCOIN_BRIDGE_MESSAGE";
 
-    const ECDSA_COMPRESSED_PUBKEY_LENGTH: u64 = 33;
+    /// Public key length constants:
+    /// - 64 bytes: raw pubkey (x, y coordinates without prefix)
+    /// - 65 bytes: uncompressed pubkey with 0x04 prefix
+    const ECDSA_RAW_PUBKEY_LENGTH: u64 = 64;
+    const ECDSA_UNCOMPRESSED_PUBKEY_LENGTH: u64 = 65;
 
     //////////////////////////////////////////////////////
     // Types
@@ -50,7 +55,7 @@ module Bridge::Committee {
     }
 
     struct CommitteeMember has copy, drop, store {
-        /// The public key bytes of the bridge key (33-byte compressed ECDSA)
+        /// The public key bytes of the bridge key (64-byte raw pubkey, x and y coordinates)
         bridge_pubkey_bytes: vector<u8>,
         /// Voting power, values are voting power in the scale of 10000.
         voting_power: u64,
@@ -82,7 +87,7 @@ module Bridge::Committee {
         signatures: vector<vector<u8>>,
     ) {
         let (i, signature_counts) = (0, Vector::length(&signatures));
-        let seen_pub_key = Vector::empty<vector<u8>>();
+        let seen_eth_addresses = Vector::empty<vector<u8>>();
         let required_voting_power = Message::required_voting_power(&message);
         // add prefix to the message bytes, then hash with keccak256
         let message_bytes = STARCOIN_MESSAGE_PREFIX;
@@ -91,23 +96,41 @@ module Bridge::Committee {
 
         let threshold = 0;
         while (i < signature_counts) {
-            // Use secp256k1_ecrecover_digest since we already have the hash
-            let pubkey = EcdsaK1::secp256k1_ecrecover_digest(Vector::borrow(&signatures, i), &message_hash);
+            // Recover EVM address from signature using official Signature::native_ecrecover
+            let recovered_eth_address = EcdsaK1::secp256k1_ecrecover_digest(Vector::borrow(&signatures, i), &message_hash);
 
-            // check duplicate
-            // and make sure pub key is part of the committee
-            assert!(!Vector::contains(&seen_pub_key, &pubkey), Errors::invalid_state(EDuplicatedSignature));
-            assert!(SimpleMap::contains_key(&self.members, &pubkey), Errors::requires_address(EInvalidSignature));
-
-            // get committee signature weight and check pubkey is part of the committee
-            let member = SimpleMap::borrow(&self.members, &pubkey);
+            // Check duplicate by EVM address
+            assert!(!Vector::contains(&seen_eth_addresses, &recovered_eth_address), Errors::invalid_state(EDuplicatedSignature));
+            
+            // Find matching member by comparing EVM addresses
+            let (found, member_opt) = find_member_by_eth_address(self, &recovered_eth_address);
+            assert!(found, Errors::requires_address(EInvalidSignature));
+            
+            let member = *Option::borrow(&member_opt);
             if (!member.blocklisted) {
                 threshold = threshold + member.voting_power;
             };
-            Vector::push_back(&mut seen_pub_key, pubkey);
+            Vector::push_back(&mut seen_eth_addresses, recovered_eth_address);
             i = i + 1;
         };
         assert!(threshold >= required_voting_power, Errors::invalid_state(ESignatureBelowThreshold));
+    }
+    
+    /// Find a committee member by their EVM address (derived from public key)
+    fun find_member_by_eth_address(self: &BridgeCommittee, eth_address: &vector<u8>): (bool, Option::Option<CommitteeMember>) {
+        let keys = SimpleMap::keys(&self.members);
+        let len = Vector::length(&keys);
+        let i = 0;
+        while (i < len) {
+            let pubkey = Vector::borrow(&keys, i);
+            let member_eth_address = Crypto::ecdsa_pub_key_to_eth_address(pubkey);
+            if (&member_eth_address == eth_address) {
+                let member = SimpleMap::borrow(&self.members, pubkey);
+                return (true, Option::some(*member))
+            };
+            i = i + 1;
+        };
+        (false, Option::none<CommitteeMember>())
     }
 
     //////////////////////////////////////////////////////
@@ -176,38 +199,45 @@ module Bridge::Committee {
 
     /// Internal helper to add a member without emitting events.
     /// Used during initial committee setup.
+    /// Accepts pubkey in either format:
+    /// - 64 bytes: raw pubkey (x, y coordinates)
+    /// - 65 bytes: uncompressed pubkey with 0x04 prefix
     fun add_member_internal(
         self: &mut BridgeCommittee,
         bridge_pubkey_bytes: vector<u8>,
         voting_power: u64,
         http_rest_url: vector<u8>,
     ) {
-        // Validate pubkey length
-        assert!(
-            Vector::length(&bridge_pubkey_bytes) == ECDSA_COMPRESSED_PUBKEY_LENGTH,
-            Errors::invalid_state(EInvalidPubkeyLength)
-        );
-
-        // Decompress the pubkey to get raw pubkey for map key
-        let uncompressed = EcdsaK1::decompress_pubkey(&bridge_pubkey_bytes);
-        let raw_pubkey = Vector::empty<u8>();
-        let j = 1; // Skip 0x04 prefix
-        while (j < 65) {
-            Vector::push_back(&mut raw_pubkey, *Vector::borrow(&uncompressed, j));
-            j = j + 1;
+        let len = Vector::length(&bridge_pubkey_bytes);
+        
+        // Extract raw 64-byte pubkey based on input format
+        let raw_pubkey = if (len == ECDSA_RAW_PUBKEY_LENGTH) {
+            // Already raw 64-byte pubkey
+            bridge_pubkey_bytes
+        } else if (len == ECDSA_UNCOMPRESSED_PUBKEY_LENGTH) {
+            // 65-byte uncompressed pubkey with 0x04 prefix, skip first byte
+            let raw = Vector::empty<u8>();
+            let j = 1;
+            while (j < 65) {
+                Vector::push_back(&mut raw, *Vector::borrow(&bridge_pubkey_bytes, j));
+                j = j + 1;
+            };
+            raw
+        } else {
+            abort Errors::invalid_state(EInvalidPubkeyLength)
         };
 
         // Check if member already exists
         assert!(!SimpleMap::contains_key(&self.members, &raw_pubkey), EDuplicatePubkey);
 
         let member = CommitteeMember {
-            bridge_pubkey_bytes,
+            bridge_pubkey_bytes: raw_pubkey,
             voting_power,
             http_rest_url,
             blocklisted: false,
         };
 
-        SimpleMap::add(&mut self.members, raw_pubkey, member);
+        SimpleMap::add(&mut self.members, copy raw_pubkey, member);
     }
 
     /// Initialize committee with a single member (for dev/test).
@@ -249,39 +279,45 @@ module Bridge::Committee {
     }
 
     /// Add a new member to the committee via governance action.
-    /// The bridge_pubkey_bytes should be 33-byte compressed ECDSA pubkey.
+    /// Accepts pubkey in either format:
+    /// - 64 bytes: raw pubkey (x, y coordinates)
+    /// - 65 bytes: uncompressed pubkey with 0x04 prefix
     public fun add_member(
         self: &mut BridgeCommittee,
         bridge_pubkey_bytes: vector<u8>,
         voting_power: u64,
         http_rest_url: vector<u8>,
     ) acquires EventHandlePod {
-        // Validate pubkey length
-        assert!(
-            Vector::length(&bridge_pubkey_bytes) == ECDSA_COMPRESSED_PUBKEY_LENGTH,
-            Errors::invalid_state(EInvalidPubkeyLength)
-        );
-
-        // Decompress the pubkey to get raw pubkey for map key
-        let uncompressed = EcdsaK1::decompress_pubkey(&bridge_pubkey_bytes);
-        let raw_pubkey = Vector::empty<u8>();
-        let j = 1; // Skip 0x04 prefix
-        while (j < 65) {
-            Vector::push_back(&mut raw_pubkey, *Vector::borrow(&uncompressed, j));
-            j = j + 1;
+        let len = Vector::length(&bridge_pubkey_bytes);
+        
+        // Extract raw 64-byte pubkey based on input format
+        let raw_pubkey = if (len == ECDSA_RAW_PUBKEY_LENGTH) {
+            // Already raw 64-byte pubkey
+            bridge_pubkey_bytes
+        } else if (len == ECDSA_UNCOMPRESSED_PUBKEY_LENGTH) {
+            // 65-byte uncompressed pubkey with 0x04 prefix, skip first byte
+            let raw = Vector::empty<u8>();
+            let j = 1;
+            while (j < 65) {
+                Vector::push_back(&mut raw, *Vector::borrow(&bridge_pubkey_bytes, j));
+                j = j + 1;
+            };
+            raw
+        } else {
+            abort Errors::invalid_state(EInvalidPubkeyLength)
         };
 
         // Check if member already exists
         assert!(!SimpleMap::contains_key(&self.members, &raw_pubkey), EDuplicatePubkey);
 
         let member = CommitteeMember {
-            bridge_pubkey_bytes,
+            bridge_pubkey_bytes: raw_pubkey,
             voting_power,
             http_rest_url,
             blocklisted: false,
         };
 
-        SimpleMap::add(&mut self.members, raw_pubkey, member);
+        SimpleMap::add(&mut self.members, copy raw_pubkey, member);
 
         // Emit event
         let eh = borrow_global_mut<EventHandlePod>(@Bridge);
@@ -349,38 +385,16 @@ module Bridge::Committee {
 
     #[test_only]
     /// Add member without emitting events (for testing without global resources).
+    /// Accepts pubkey in either format:
+    /// - 64 bytes: raw pubkey (x, y coordinates)
+    /// - 65 bytes: uncompressed pubkey with 0x04 prefix
     public fun add_member_for_testing(
         self: &mut BridgeCommittee,
         bridge_pubkey_bytes: vector<u8>,
         voting_power: u64,
         http_rest_url: vector<u8>,
     ) {
-        // Validate pubkey length
-        assert!(
-            Vector::length(&bridge_pubkey_bytes) == ECDSA_COMPRESSED_PUBKEY_LENGTH,
-            Errors::invalid_state(EInvalidPubkeyLength)
-        );
-
-        // Decompress the pubkey to get raw pubkey for map key
-        let uncompressed = EcdsaK1::decompress_pubkey(&bridge_pubkey_bytes);
-        let raw_pubkey = Vector::empty<u8>();
-        let j = 1; // Skip 0x04 prefix
-        while (j < 65) {
-            Vector::push_back(&mut raw_pubkey, *Vector::borrow(&uncompressed, j));
-            j = j + 1;
-        };
-
-        // Check if member already exists
-        assert!(!SimpleMap::contains_key(&self.members, &raw_pubkey), EDuplicatePubkey);
-
-        let member = CommitteeMember {
-            bridge_pubkey_bytes,
-            voting_power,
-            http_rest_url,
-            blocklisted: false,
-        };
-
-        SimpleMap::add(&mut self.members, raw_pubkey, member);
+        add_member_internal(self, bridge_pubkey_bytes, voting_power, http_rest_url);
     }
 
     #[test_only]

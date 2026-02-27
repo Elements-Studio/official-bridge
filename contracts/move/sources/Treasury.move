@@ -7,7 +7,7 @@ module Bridge::Treasury {
     use StarcoinFramework::Errors;
     use StarcoinFramework::Event;
     use StarcoinFramework::Signer;
-    use StarcoinFramework::SimpleMap::{Self, SimpleMap};
+    use Bridge::SimpleMap::{Self, SimpleMap};
     use StarcoinFramework::Token;
 
     friend Bridge::Bridge;

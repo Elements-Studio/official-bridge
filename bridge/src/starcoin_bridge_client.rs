@@ -363,7 +363,15 @@ where
                 http_rest_url,
                 blocklisted,
             } = member;
-            let pubkey = BridgeAuthorityPublicKey::from_bytes(&bridge_pubkey_bytes)?;
+            // Handle 64-byte raw pubkey (x, y without 0x04 prefix) by prepending 0x04
+            let pubkey_bytes_for_parsing = if bridge_pubkey_bytes.len() == 64 {
+                let mut full = vec![0x04];
+                full.extend_from_slice(&bridge_pubkey_bytes);
+                full
+            } else {
+                bridge_pubkey_bytes.clone()
+            };
+            let pubkey = BridgeAuthorityPublicKey::from_bytes(&pubkey_bytes_for_parsing)?;
             let base_url = from_utf8(&http_rest_url).unwrap_or_else(|_| {
                 warn!(
                     "Bridge authority address: {}, pubkey: {:?} has invalid http url: {:?}",

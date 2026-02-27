@@ -13,7 +13,7 @@ module Bridge::LimiterTests {
     use Bridge::Treasury::{Self, decimal_multiplier, notional_value, token_id, update_asset_notional_price_for_testing};
     use Bridge::USDC::USDC;
     use Bridge::USDT::USDT;
-    use StarcoinFramework::SimpleMap;
+    use Bridge::SimpleMap;
 
     //
     #[test]

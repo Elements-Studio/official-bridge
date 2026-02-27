@@ -25,7 +25,7 @@ module Bridge::BridgeTests {
     use StarcoinFramework::Option;
     use StarcoinFramework::STC::STC;
     use StarcoinFramework::Signer;
-    use StarcoinFramework::SimpleMap;
+    use Bridge::SimpleMap;
     use StarcoinFramework::Token;
     use StarcoinFramework::Vector;
 
@@ -613,7 +613,8 @@ module Bridge::BridgeTests {
 
         // Create a message and verify the type
         let member_address = @0x00000000000000000000000000000001;
-        let member_pubkey = x"029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964";
+        // Use 64-byte uncompressed pubkey
+        let member_pubkey = x"9bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964058d24456ffbf25b675c768bbb2212a7ef76e07f36bb13d1f8f714041bb78c24";
 
         let message = Message::create_update_committee_member_message(
             ChainIDs::starcoin_testnet(),
@@ -632,7 +633,8 @@ module Bridge::BridgeTests {
     fun test_update_committee_member_message_creation() {
         // Create update committee member message to add a new member
         let new_member_address = @0x00000000000000000000000000000099;
-        let new_member_pubkey = x"029bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964";
+        // Use 64-byte uncompressed pubkey
+        let new_member_pubkey = x"9bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964058d24456ffbf25b675c768bbb2212a7ef76e07f36bb13d1f8f714041bb78c24";
         let voting_power = 5000u64;
         let http_url = b"https://new-validator.example.com:9191";
 
@@ -666,9 +668,9 @@ module Bridge::BridgeTests {
         let env = create_env(chain_id);
         let bridge = BridgeEnv::create_bridge_default(&mut env, bridge_admin);
 
-        // New member details - use a valid 33-byte compressed ECDSA pubkey
+        // New member details - use 64-byte uncompressed ECDSA pubkey
         let new_member_address = @0xBEEF0001;
-        let new_member_pubkey = x"02a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcd12";
+        let new_member_pubkey = x"a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcd126b21cbe2ede3e684f1ca45d9ff3efb939a32a8fd9c99506a6863f72ea2dc0ecc";
         let new_voting_power = 5000u64;
         let new_http_url = b"https://new-validator.example.com:9191";
 
@@ -704,7 +706,8 @@ module Bridge::BridgeTests {
 
         // Try to remove a member (update_type = 1), should fail
         let member_address = @0xBEEF0001;
-        let member_pubkey = x"02a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcd12";
+        // Use 64-byte uncompressed pubkey
+        let member_pubkey = x"a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcd126b21cbe2ede3e684f1ca45d9ff3efb939a32a8fd9c99506a6863f72ea2dc0ecc";
 
         BridgeEnv::execute_update_committee_member(
             &mut env,
@@ -732,7 +735,7 @@ module Bridge::BridgeTests {
         let initial_seq = Bridge::get_seq_num_for(&mut bridge, MessageTypes::update_committee_member());
         assert!(initial_seq == 0, 0);
 
-        // Add first member
+        // Add first member - use 64-byte uncompressed pubkey
         BridgeEnv::execute_update_committee_member(
             &mut env,
             &mut bridge,
@@ -740,7 +743,7 @@ module Bridge::BridgeTests {
             chain_id,
             0,
             @0xBEEF0001,
-            x"02a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcd12",
+            x"a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcd126b21cbe2ede3e684f1ca45d9ff3efb939a32a8fd9c99506a6863f72ea2dc0ecc",
             5000,
             b"https://member1.com",
         );
@@ -749,7 +752,7 @@ module Bridge::BridgeTests {
         let seq_after_first = Bridge::get_seq_num_for(&mut bridge, MessageTypes::update_committee_member());
         assert!(seq_after_first == 1, 1);
 
-        // Add second member (different pubkey)
+        // Add second member (different 64-byte uncompressed pubkey)
         BridgeEnv::execute_update_committee_member(
             &mut env,
             &mut bridge,
@@ -757,7 +760,7 @@ module Bridge::BridgeTests {
             chain_id,
             0,
             @0xBEEF0002,
-            x"03b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678",
+            x"b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456780adbb2f21dabc40f5db5e2b5c2dbb8da6888f9bc57cd4b46b8b3a613b57e1aab",
             6000,
             b"https://member2.com",
         );
