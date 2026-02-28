@@ -28,7 +28,6 @@ pub const APPLICATION_JSON: &str = "application/json";
 
 pub const PING_PATH: &str = "/ping";
 pub const METRICS_KEY_PATH: &str = "/metrics_pub_key";
-pub const ESTIMATE_FEES_PATH: &str = "/estimate_fees";
 
 // Important: for BridgeActions, the paths need to match the ones in bridge_client.rs
 // Note: Using :param syntax for axum 0.7.x (not {param} which is for axum 0.8.x)
@@ -95,7 +94,6 @@ pub(crate) fn make_router(
         .route("/health", get(health_check))
         .route(PING_PATH, get(ping))
         .route(METRICS_KEY_PATH, get(metrics_key_fetch))
-        .route(ESTIMATE_FEES_PATH, get(estimate_fees))
         .route(ETH_TO_STARCOIN_TX_PATH, get(handle_eth_tx_hash))
         .route(
             STARCOIN_TO_ETH_TX_PATH,
@@ -180,16 +178,6 @@ async fn handle_starcoin_bridge_tx_digest(
         Ok(sig)
     };
     with_metrics!(metrics.clone(), "handle_starcoin_bridge_tx_digest", future).await
-}
-
-async fn estimate_fees() -> Result<Json<FeeEstimation>, BridgeError> {
-    // Placeholder implementation: return fixed value of 100 for all estimates
-    Ok(Json(FeeEstimation {
-        source_tx_estimate: "100".to_string(),
-        combined_approve_and_claim_estimate: "100".to_string(),
-        approve_estimate: "100".to_string(),
-        claim_estimate: "100".to_string(),
-    }))
 }
 
 #[macro_export]
