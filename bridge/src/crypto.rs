@@ -51,18 +51,9 @@ impl From<&BridgeAuthorityPublicKey> for BridgeAuthorityPublicKeyBytes {
     }
 }
 
-impl From<[u8; 32]> for BridgeAuthorityPublicKeyBytes {
-    fn from(bytes: [u8; 32]) -> Self {
-        // Secp256k1 public key is 33 bytes compressed, but we're storing 32 bytes
-        // This is a simplified conversion - may need adjustment based on actual format
-        Self::from_bytes(&bytes).unwrap_or_else(|_| {
-            // Fallback: try with 0x02 prefix for compressed key
-            let mut full_bytes = vec![0x02];
-            full_bytes.extend_from_slice(&bytes);
-            Self::from_bytes(&full_bytes).expect("Failed to create BridgeAuthorityPublicKeyBytes")
-        })
-    }
-}
+// NOTE: From<[u8; 32]> was intentionally removed - 32 bytes is NOT a valid secp256k1 public key.
+// Valid formats are: 33 bytes (compressed), 64 bytes (raw x,y), or 65 bytes (uncompressed with 04 prefix).
+// Accepting 32-byte input with automatic prefix guessing is a security risk.
 
 impl ToFromBytes for BridgeAuthorityPublicKeyBytes {
     // Parse an object from its byte representation

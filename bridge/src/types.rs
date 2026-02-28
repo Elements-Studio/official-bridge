@@ -18,7 +18,6 @@ use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::hash::{Digest, HashFunction, Keccak256};
 use fastcrypto::traits::ToFromBytes;
 use num_enum::TryFromPrimitive;
-use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use shared_crypto::intent::IntentScope;
 use starcoin_bridge_types::base_types::StarcoinAddress;
@@ -35,7 +34,6 @@ use starcoin_bridge_types::bridge::{
     APPROVAL_THRESHOLD_LIMIT_UPDATE, APPROVAL_THRESHOLD_TOKEN_TRANSFER,
     APPROVAL_THRESHOLD_UPDATE_COMMITTEE_MEMBER,
 };
-use starcoin_bridge_types::committee::CommitteeTrait;
 use starcoin_bridge_types::committee::StakeUnit;
 use starcoin_bridge_types::message_envelope::{Envelope, Message, VerifiedEnvelope};
 use starcoin_bridge_types::TypeTag;
@@ -172,88 +170,6 @@ impl core::fmt::Display for BridgeCommittee {
             )?;
         }
         Ok(())
-    }
-}
-
-impl CommitteeTrait for BridgeCommittee {
-    fn version(&self) -> u64 {
-        self.committee_version
-    }
-
-    fn num_members(&self) -> usize {
-        self.members.len()
-    }
-
-    // Note: blocklisted members are always excluded.
-    fn shuffle_by_stake_with_rng<R: rand::Rng>(
-        &self,
-        preferences: &[[u8; 32]],
-        rng: &mut R,
-    ) -> Vec<[u8; 32]> {
-        // Convert preferences to BridgeAuthorityPublicKeyBytes set
-        let pref_set: Option<BTreeSet<BridgeAuthorityPublicKeyBytes>> = if preferences.is_empty() {
-            None
-        } else {
-            Some(
-                preferences
-                    .iter()
-                    .map(|addr| BridgeAuthorityPublicKeyBytes::from(*addr))
-                    .collect(),
-            )
-        };
-
-        let mut candidates = self
-            .members
-            .iter()
-            .filter_map(|(name, a)| {
-                // Remove blocklisted members
-                if a.is_blocklisted {
-                    return None;
-                }
-                // exclude non-allowlisted members
-                if let Some(ref pref_set) = pref_set {
-                    match pref_set.contains(name) {
-                        true => Some((name.clone(), a.voting_power)),
-                        false => None,
-                    }
-                } else {
-                    Some((name.clone(), a.voting_power))
-                }
-            })
-            .collect::<Vec<_>>();
-
-        if pref_set.is_some() {
-            candidates.sort_by(|(_, a), (_, b)| b.cmp(a));
-            candidates
-                .iter()
-                .map(|(name, _)| {
-                    let bytes = name.as_bytes();
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&bytes[..bytes.len().min(32)]);
-                    arr
-                })
-                .collect()
-        } else {
-            // Simple random shuffle when no preferences
-            candidates.shuffle(rng);
-            candidates
-                .iter()
-                .map(|(name, _)| {
-                    let bytes = name.as_bytes();
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&bytes[..bytes.len().min(32)]);
-                    arr
-                })
-                .collect()
-        }
-    }
-
-    fn weight(&self, author: &[u8; 32]) -> StakeUnit {
-        let author_key = BridgeAuthorityPublicKeyBytes::from(*author);
-        self.members
-            .get(&author_key)
-            .map(|a| a.voting_power)
-            .unwrap_or(0)
     }
 }
 

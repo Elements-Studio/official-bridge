@@ -8,7 +8,7 @@ std = "0x1"
 Bridge = "0xba0f421cab925857ae31f058c2f027f8"
 
 [dependencies]
-StarcoinFramework = { git = "https://github.com/starcoinorg/starcoin-framework.git", rev = "main" }
+StarcoinFramework = { git = "https://github.com/starcoinorg/starcoin-framework.git", rev = "v12" }
 
 [dev-dependencies]
-UnitTest = { git = "https://github.com/starcoinorg/starcoin-framework.git", subdir = "unit-test", rev = "main" }
+UnitTest = { git = "https://github.com/starcoinorg/starcoin-framework.git", subdir = "unit-test", rev = "v12" }
