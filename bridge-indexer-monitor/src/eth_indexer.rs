@@ -618,7 +618,7 @@ async fn process_eth_log_to_memory(
                     nonce: bridge_event.nonce,
                     token_id: bridge_event.token_id,
                     amount: bridge_event.starcoin_bridge_adjusted_amount,
-                    sender_address: format!("{:?}", bridge_event.eth_address),
+                    sender_address: hex::encode(bridge_event.eth_address.as_bytes()),
                     recipient_address: hex::encode(bridge_event.starcoin_bridge_address),
                     block_number: log.block_number,
                 };
@@ -646,8 +646,8 @@ async fn process_eth_log_to_memory(
                     token_id: claim.token_id,
                     amount: claim.erc_20_adjusted_amount.as_u64(),
                     sender_address: String::new(),
-                    recipient_address: format!("{:?}", claim.recipient_address),
-                    claimer_address: format!("{:?}", claim.recipient_address),
+                    recipient_address: hex::encode(claim.recipient_address.as_bytes()),
+                    claimer_address: hex::encode(claim.recipient_address.as_bytes()),
                     block_number: log.block_number,
                 };
 
@@ -862,7 +862,10 @@ async fn write_finalized_records_to_db(
                 is_finalized: Some(true),
                 txn_hash: hex::decode(deposit.tx_hash.trim_start_matches("0x")).unwrap_or_default(),
                 txn_sender: hex::decode(deposit.sender_address.trim_start_matches("0x"))
-                    .unwrap_or_default(),
+                    .unwrap_or_else(|e| {
+                        error!("[ETH] Failed to decode txn_sender '{}': {:?}", deposit.sender_address, e);
+                        vec![]
+                    }),
                 gas_usage: 0,
             });
 
@@ -872,7 +875,10 @@ async fn write_finalized_records_to_db(
                 block_height: deposit.block_number as i64,
                 timestamp_ms: deposit.timestamp_ms as i64,
                 sender_address: hex::decode(deposit.sender_address.trim_start_matches("0x"))
-                    .unwrap_or_default(),
+                    .unwrap_or_else(|e| {
+                        error!("[ETH] Failed to decode sender_address '{}': {:?}", deposit.sender_address, e);
+                        vec![]
+                    }),
                 destination_chain: dest_chain_id,
                 recipient_address: hex::decode(deposit.recipient_address.trim_start_matches("0x"))
                     .unwrap_or_default(),
@@ -916,7 +922,10 @@ async fn write_finalized_records_to_db(
                 is_finalized: Some(true),
                 txn_hash: hex::decode(claim.tx_hash.trim_start_matches("0x")).unwrap_or_default(),
                 txn_sender: hex::decode(claim.claimer_address.trim_start_matches("0x"))
-                    .unwrap_or_default(),
+                    .unwrap_or_else(|e| {
+                        error!("[ETH] Failed to decode claimer_address '{}': {:?}", claim.claimer_address, e);
+                        vec![]
+                    }),
                 gas_usage: 0,
             });
         }
