@@ -902,7 +902,14 @@ async fn write_finalized_records_to_db(
                 is_finalized: Some(true),
                 txn_hash: hex::decode(approval.tx_hash.trim_start_matches("0x"))
                     .unwrap_or_default(),
-                txn_sender: vec![],
+                txn_sender: record
+                    .deposit
+                    .as_ref()
+                    .map(|d| {
+                        hex::decode(d.recipient_address.trim_start_matches("0x"))
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default(),
                 gas_usage: 0,
             });
         }

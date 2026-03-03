@@ -39,7 +39,7 @@ use crate::network::NetworkType;
 use crate::security_monitor::SharedSecurityMonitor;
 use crate::struct_tag;
 use crate::telegram::{BridgeNotifyEvent, NotifyChain, SharedTelegramNotifier};
-use diesel::{ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use move_core_types::account_address::AccountAddress;
 use move_core_types::identifier::Identifier;
@@ -191,6 +191,9 @@ impl StcEventHandler {
                             &mut token_transfer_datas,
                         )?;
                     }
+
+                    // Fill missing txn_sender for Approved/Claimed from token_transfer_data
+                    self.fill_missing_txn_sender(&mut token_transfers).await?;
 
                     self.write_to_db(token_transfers, token_transfer_datas)
                         .await?;
@@ -588,7 +591,7 @@ impl StcEventHandler {
                 data_source: BridgeDataSource::STARCOIN,
                 is_finalized: Some(is_finalized),
                 txn_hash: tx_hash.clone(),
-                txn_sender: vec![],
+                txn_sender: event.sender_address.to_vec(),
                 gas_usage: 0,
             });
 
@@ -823,7 +826,7 @@ impl StcEventHandler {
                     data_source: BridgeDataSource::STARCOIN,
                     is_finalized: Some(true),
                     txn_hash: tx_hash.clone(),
-                    txn_sender: vec![],
+                    txn_sender: hex::decode(&deposit.sender_address).unwrap_or_default(),
                     gas_usage: 0,
                 });
 
@@ -858,7 +861,11 @@ impl StcEventHandler {
                     data_source: BridgeDataSource::STARCOIN,
                     is_finalized: Some(true),
                     txn_hash: tx_hash,
-                    txn_sender: vec![],
+                    txn_sender: record
+                        .deposit
+                        .as_ref()
+                        .map(|d| hex::decode(&d.recipient_address).unwrap_or_default())
+                        .unwrap_or_default(),
                     gas_usage: 0,
                 });
             }
@@ -872,6 +879,19 @@ impl StcEventHandler {
                 // Mark quota cache stale
                 mark_quota_stale();
 
+                let claimer = hex::decode(claim.claimer_address.trim_start_matches("0x"))
+                    .unwrap_or_default();
+                let txn_sender = if claimer.is_empty() {
+                    // Fallback to deposit's recipient_address when claimer_address unavailable
+                    record
+                        .deposit
+                        .as_ref()
+                        .map(|d| hex::decode(&d.recipient_address).unwrap_or_default())
+                        .unwrap_or_default()
+                } else {
+                    claimer
+                };
+
                 token_transfers.push(TokenTransfer {
                     chain_id: source_chain_id,
                     nonce: record.key.nonce as i64,
@@ -881,7 +901,7 @@ impl StcEventHandler {
                     data_source: BridgeDataSource::STARCOIN,
                     is_finalized: Some(true),
                     txn_hash: tx_hash,
-                    txn_sender: vec![],
+                    txn_sender,
                     gas_usage: 0,
                 });
             }
@@ -890,6 +910,50 @@ impl StcEventHandler {
         // Write to DB
         self.write_to_db(token_transfers, token_transfer_datas)
             .await?;
+
+        Ok(())
+    }
+
+    /// Fill missing txn_sender for Approved/Claimed records by looking up
+    /// recipient_address from token_transfer_data table.
+    ///
+    /// This is needed for the on-chain path where Approved/Claimed Move events
+    /// only contain message_key (source_chain + nonce) without any address info.
+    async fn fill_missing_txn_sender(
+        &self,
+        transfers: &mut [TokenTransfer],
+    ) -> anyhow::Result<()> {
+        let mut conn = self.db.connect().await?;
+
+        for transfer in transfers.iter_mut() {
+            if !transfer.txn_sender.is_empty() {
+                continue;
+            }
+            if transfer.status != TokenTransferStatus::Approved
+                && transfer.status != TokenTransferStatus::Claimed
+            {
+                continue;
+            }
+
+            // Look up recipient_address from token_transfer_data (set at deposit time)
+            let result: Option<Vec<u8>> = token_transfer_data::table
+                .filter(token_transfer_data::chain_id.eq(transfer.chain_id))
+                .filter(token_transfer_data::nonce.eq(transfer.nonce))
+                .select(token_transfer_data::recipient_address)
+                .first(&mut conn)
+                .await
+                .optional()?;
+
+            if let Some(recipient) = result {
+                transfer.txn_sender = recipient;
+            } else {
+                warn!(
+                    "[StcEventHandler] No token_transfer_data found for chain_id={}, nonce={} \
+                     when filling txn_sender for {:?}",
+                    transfer.chain_id, transfer.nonce, transfer.status
+                );
+            }
+        }
 
         Ok(())
     }
