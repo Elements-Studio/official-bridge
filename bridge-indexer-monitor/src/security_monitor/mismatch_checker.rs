@@ -272,16 +272,13 @@ impl Default for MismatchChecker {
 
 /// Convert deposit amount to expected claim amount
 ///
-/// Handles decimal conversion between chains:
-/// - USDT (token_id=3 or 4): Bridge uses 8 decimals, EVM uses 6 decimals
-fn convert_amount_for_claim(deposit_amount: u64, token_id: u8) -> u64 {
-    match token_id {
-        3 | 4 => {
-            // USDT: 8 decimals (STC) -> 6 decimals (EVM)
-            deposit_amount / 100
-        }
-        _ => deposit_amount,
-    }
+/// Both Starcoin and EVM use the same decimals for stablecoins:
+/// - USDC (token_id=3): 6 decimals on both sides
+/// - USDT (token_id=4): 6 decimals on both sides
+/// Decimal conversion between chains is handled at the contract level,
+/// so event amounts are already normalized and should match 1:1.
+fn convert_amount_for_claim(deposit_amount: u64, _token_id: u8) -> u64 {
+    deposit_amount
 }
 
 /// Check if two addresses match (case-insensitive, handles 0x prefix)
@@ -444,14 +441,14 @@ mod tests {
     }
 
     #[test]
-    fn test_usdt_decimal_conversion() {
+    fn test_usdt_no_decimal_conversion() {
         let checker = MismatchChecker::new();
         let key = TransferKey::new(ChainId::Eth, 100);
 
-        // USDT: 8 decimals -> 6 decimals (divide by 100)
+        // USDT: 6 decimals on both Starcoin and EVM sides, amounts match 1:1
         let pair = EventPair {
             key,
-            deposit: Some(create_deposit(100, 100000000, 4)), // 1 USDT in 8 decimals
+            deposit: Some(create_deposit(100, 1000000, 4)), // 1 USDT in 6 decimals
             approval: None,
             claim: Some(create_claim(100, 1000000, 4)), // 1 USDT in 6 decimals
         };
@@ -469,11 +466,11 @@ mod tests {
 
     #[test]
     fn test_convert_amount_for_claim() {
-        // USDT conversion
-        assert_eq!(convert_amount_for_claim(100000000, 3), 1000000);
-        assert_eq!(convert_amount_for_claim(100000000, 4), 1000000);
-        // Non-USDT stays same
-        assert_eq!(convert_amount_for_claim(100000000, 1), 100000000);
+        // All tokens: amounts pass through unchanged (decimal conversion is at contract level)
+        assert_eq!(convert_amount_for_claim(1000000, 3), 1000000);  // USDC: 6 decimals
+        assert_eq!(convert_amount_for_claim(1000000, 4), 1000000);  // USDT: 6 decimals
+        assert_eq!(convert_amount_for_claim(100000000, 1), 100000000); // BTC: 8 decimals
+        assert_eq!(convert_amount_for_claim(100000000, 2), 100000000); // ETH: 8 decimals (Starcoin side)
     }
 
     #[test]

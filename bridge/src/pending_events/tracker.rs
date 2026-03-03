@@ -417,15 +417,11 @@ impl TransferTracker {
             });
         }
 
-        // Amount check: claim amount should match deposit (adjusted for decimals)
-        // Note: Different chains may have different decimal representations
-        // For USDT: Bridge uses 8 decimals, EVM uses 6 decimals
-        let expected_claim_amount = if claim.token_id == 3 {
-            // USDT: 8 decimals -> 6 decimals
-            deposit.amount / 100
-        } else {
-            deposit.amount
-        };
+        // Amount check: claim amount should match deposit
+        // Decimal conversion between chains is handled at the contract level,
+        // so event amounts are already normalized and should match 1:1.
+        // USDC (token_id=3) and USDT (token_id=4) both use 6 decimals on both sides.
+        let expected_claim_amount = deposit.amount;
 
         if claim.amount != expected_claim_amount {
             return Some(MismatchReason::AmountMismatch {
@@ -979,7 +975,7 @@ mod tests {
             source_chain: ChainId::Eth,
             destination_chain: ChainId::Starcoin,
             nonce,
-            token_id: 3, // USDT
+            token_id: 4, // USDT (6 decimals on both sides)
             amount,
             sender_address: "0x1234".to_string(),
             recipient_address: "0x5678".to_string(),
@@ -1000,7 +996,7 @@ mod tests {
             source_chain: ChainId::Eth,
             destination_chain: ChainId::Starcoin,
             nonce,
-            token_id: 3,
+            token_id: 4, // USDT (6 decimals on both sides)
             amount,
             sender_address: "0x1234".to_string(),
             recipient_address: recipient.to_string(),
@@ -1021,11 +1017,11 @@ mod tests {
     async fn test_normal_transfer_lifecycle() {
         let tracker = TransferTracker::new();
 
-        // Deposit 100 USDT (8 decimals = 10_000_000_000)
-        let (event, deposit) = create_deposit_event(1, 10_000_000_000);
+        // Deposit 100 USDT (6 decimals = 100_000_000)
+        let (event, deposit) = create_deposit_event(1, 100_000_000);
         tracker.on_deposit(&event, &deposit).await;
 
-        // Claim (6 decimals = 100_000_000)
+        // Claim 100 USDT (6 decimals = 100_000_000)
         let (event, claim) = create_claim_event(1, 100_000_000, "0x5678");
         tracker.on_claim(&event, &claim).await;
 
@@ -1067,8 +1063,8 @@ mod tests {
             }
         }));
 
-        // Deposit 100 USDT
-        let (event, deposit) = create_deposit_event(1, 10_000_000_000);
+        // Deposit 100 USDT (6 decimals)
+        let (event, deposit) = create_deposit_event(1, 100_000_000);
         tracker.on_deposit(&event, &deposit).await;
 
         // Try to claim 200 USDT (attacker trying to steal)
@@ -1092,7 +1088,7 @@ mod tests {
 
         // Add deposits
         for i in 1..=3 {
-            let (event, deposit) = create_deposit_event(i, 10_000_000_000);
+            let (event, deposit) = create_deposit_event(i, 100_000_000);
             tracker.on_deposit(&event, &deposit).await;
         }
 
@@ -1110,7 +1106,7 @@ mod tests {
         let tracker = TransferTracker::new();
 
         // Add deposit at block 100
-        let (mut event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (mut event, deposit) = create_deposit_event(1, 100_000_000);
         event.block_number = 100;
         tracker.on_deposit(&event, &deposit).await;
 
@@ -1143,7 +1139,7 @@ mod tests {
         let tracker = TransferTracker::new();
 
         // Add deposit at block 200
-        let (mut event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (mut event, deposit) = create_deposit_event(1, 100_000_000);
         event.block_number = 200;
         tracker.on_deposit(&event, &deposit).await;
 
@@ -1171,7 +1167,7 @@ mod tests {
             .await;
 
         // Add deposit - should trigger callback
-        let (event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (event, deposit) = create_deposit_event(1, 100_000_000);
         tracker.on_deposit(&event, &deposit).await;
         assert_eq!(callback_count.load(Ordering::SeqCst), 1);
 
@@ -1201,7 +1197,7 @@ mod tests {
             .await;
 
         // Add deposit at block 200
-        let (mut event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (mut event, deposit) = create_deposit_event(1, 100_000_000);
         event.block_number = 200;
         tracker.on_deposit(&event, &deposit).await;
         assert_eq!(callback_count.load(Ordering::SeqCst), 1);
@@ -1217,7 +1213,7 @@ mod tests {
 
         // Add multiple deposits
         for i in 1..=3 {
-            let (event, deposit) = create_deposit_event(i, 10_000_000_000);
+            let (event, deposit) = create_deposit_event(i, 100_000_000);
             tracker.on_deposit(&event, &deposit).await;
         }
 
@@ -1239,7 +1235,7 @@ mod tests {
         let tracker = TransferTracker::new();
 
         // Add deposit and approval for key 1
-        let (event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (event, deposit) = create_deposit_event(1, 100_000_000);
         tracker.on_deposit(&event, &deposit).await;
 
         let (event, approval) = create_approval_event(1);
@@ -1299,7 +1295,7 @@ mod tests {
         let tracker = TransferTracker::new();
 
         // First add a deposit
-        let (event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (event, deposit) = create_deposit_event(1, 100_000_000);
         tracker.on_deposit(&event, &deposit).await;
 
         // Then approval should return None (no alert)
@@ -1336,7 +1332,7 @@ mod tests {
         let tracker = TransferTracker::new();
 
         // First add a deposit
-        let (event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (event, deposit) = create_deposit_event(1, 100_000_000);
         tracker.on_deposit(&event, &deposit).await;
 
         // Then claim should return None (no alert)
@@ -1351,8 +1347,8 @@ mod tests {
         let tracker = TransferTracker::new();
 
         // Add deposits at different blocks
-        let (event1, deposit1) = create_deposit_event(1, 10_000_000_000);
-        let (event2, deposit2) = create_deposit_event(2, 20_000_000_000);
+        let (event1, deposit1) = create_deposit_event(1, 100_000_000);
+        let (event2, deposit2) = create_deposit_event(2, 200_000_000);
 
         tracker.on_deposit(&event1, &deposit1).await;
         tracker.on_deposit(&event2, &deposit2).await;
@@ -1382,7 +1378,7 @@ mod tests {
 
         // Add three deposits
         for i in 1..=3 {
-            let (event, deposit) = create_deposit_event(i, 10_000_000_000);
+            let (event, deposit) = create_deposit_event(i, 100_000_000);
             tracker.on_deposit(&event, &deposit).await;
         }
         assert_eq!(tracker.pending_count().await, 3);
@@ -1408,9 +1404,9 @@ mod tests {
         let tracker = TransferTracker::new();
 
         // Add deposits
-        let (event, deposit) = create_deposit_event(1, 10_000_000_000);
+        let (event, deposit) = create_deposit_event(1, 100_000_000);
         tracker.on_deposit(&event, &deposit).await;
-        let (event, deposit) = create_deposit_event(2, 20_000_000_000);
+        let (event, deposit) = create_deposit_event(2, 200_000_000);
         tracker.on_deposit(&event, &deposit).await;
 
         assert_eq!(tracker.pending_count().await, 2);
