@@ -36,6 +36,9 @@ pub struct TelegramConfig {
     pub bot_token: String,
     pub chat_id: String,
     pub emergency_mention_users: Vec<String>,
+    /// Pre-formatted environment label appended to every notification.
+    /// Example: "Ethereum Sepolia (0xCB82...03c6) ↔ Starcoin Testnet (0x34aa...0e9d)"
+    pub env_label: String,
 }
 
 impl TelegramConfig {
@@ -184,6 +187,15 @@ impl TelegramNotifier {
         self.config.is_configured()
     }
 
+    /// Build environment footer to append to every message
+    fn env_footer(&self) -> String {
+        if self.config.env_label.is_empty() {
+            String::new()
+        } else {
+            format!("\n\n───────────\n🔗 {}", self.config.env_label)
+        }
+    }
+
     /// Send a raw message to Telegram
     pub async fn send_message(&self, text: &str) -> Result<()> {
         if !self.is_configured() {
@@ -193,6 +205,8 @@ impl TelegramNotifier {
             );
             return Ok(());
         }
+
+        let text = format!("{}{}", text, self.env_footer());
 
         for attempt in 0..MAX_RETRIES {
             match self

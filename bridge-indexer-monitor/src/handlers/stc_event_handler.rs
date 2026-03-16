@@ -393,16 +393,14 @@ impl StcEventHandler {
                 observed_chain: ChainId::Starcoin,
             };
 
-            // Store in transfer tracker (will notify SecurityMonitor via callback)
-            // Check return value for immediate mismatch detection
+            // Store in transfer tracker and check for approval without deposit
             if let Some(alert) = self
                 .transfer_tracker
                 .on_approval(&pending_event, &approval)
                 .await
             {
-                // Handle synchronous mismatch - trigger emergency pause
                 if let Some(ref monitor) = self.security_monitor {
-                    monitor.handle_mismatch_alert(alert).await;
+                    monitor.handle_approval_alert(alert).await;
                 }
             }
 
@@ -448,14 +446,8 @@ impl StcEventHandler {
                 observed_chain: ChainId::Starcoin,
             };
 
-            // Store in transfer tracker
-            // Check return value for immediate mismatch detection
-            if let Some(alert) = self.transfer_tracker.on_claim(&pending_event, &claim).await {
-                // Handle synchronous mismatch - trigger emergency pause
-                if let Some(ref monitor) = self.security_monitor {
-                    monitor.handle_mismatch_alert(alert).await;
-                }
-            }
+            // Store in transfer tracker (claim alerts not monitored - contract enforces correctness)
+            let _ = self.transfer_tracker.on_claim(&pending_event, &claim).await;
 
             // Update metrics
             self.metrics

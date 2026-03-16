@@ -685,11 +685,10 @@ async fn process_eth_log_to_memory(
                     observed_chain: ChainId::Eth,
                 };
 
-                // Check return value for immediate mismatch detection
+                // Check for approval without deposit
                 if let Some(alert) = tracker.on_approval(&pending_event, &approval_event).await {
-                    // Handle synchronous mismatch - trigger emergency pause
                     if let Some(ref monitor) = security_monitor {
-                        monitor.handle_mismatch_alert(alert).await;
+                        monitor.handle_approval_alert(alert).await;
                     }
                 }
             }

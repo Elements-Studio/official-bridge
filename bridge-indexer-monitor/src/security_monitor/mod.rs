@@ -1,58 +1,42 @@
 //! Security Monitor Module
 //!
-//! Detects deposit/claim mismatches that indicate potential key compromise.
+//! Verifies every approval has a matching deposit. Any mismatch = freeze the bridge.
 //!
 //! ## Architecture
 //!
 //! ```text
-//!   ┌───────────────────────────────────────────────────────────┐
-//!   │                    SecurityMonitor                         │
-//!   │                                                            │
-//!   │   ┌─────────────────────────────────────────────────────┐ │
-//!   │   │              EventOrganizer                          │ │
-//!   │   │  ┌────────────────┐  ┌──────────────────────────┐  │ │
-//!   │   │  │ TransferTracker │  │  Database                │  │ │
-//!   │   │  │ (pending)       │  │  (finalized)             │  │ │
-//!   │   │  └───────┬────────┘  └───────────┬──────────────┘  │ │
-//!   │   │          └──────────┬────────────┘                  │ │
-//!   │   │                     ▼                               │ │
-//!   │   │          Organize into (deposit, approval, claim)   │ │
-//!   │   └─────────────────────┬───────────────────────────────┘ │
-//!   │                         ▼                                 │
-//!   │   ┌─────────────────────────────────────────────────────┐ │
-//!   │   │              MismatchChecker                         │ │
-//!   │   │         Check pairs for mismatches                   │ │
-//!   │   └─────────────────────┬───────────────────────────────┘ │
-//!   │                         ▼                                 │
-//!   │                  Mismatch Detected?                       │
-//!   │                         │                                 │
-//!   │                  Yes    │                                 │
-//!   │                         ▼                                 │
-//!   │   ┌─────────────────────────────────────────────────────┐ │
-//!   │   │  Alert (Telegram) + Emergency Pause (both chains)   │ │
-//!   │   └─────────────────────────────────────────────────────┘ │
-//!   └───────────────────────────────────────────────────────────┘
+//!   ┌──────────────────────────────────────────────────────────┐
+//!   │                   SecurityMonitor                         │
+//!   │                                                           │
+//!   │  Path A (real-time):                                      │
+//!   │    approval event → on_approval() → no deposit in mem?    │
+//!   │    → handle_approval_alert() → verify mem+DB → freeze     │
+//!   │                                                           │
+//!   │  Path B (periodic scan):                                  │
+//!   │    run() loop → get_unchecked_approvals() from DB         │
+//!   │    → find_deposit() → no deposit? → freeze                │
+//!   │    → deposit found? → mark_verified(true)                 │
+//!   │                                                           │
+//!   │  Data sources:                                            │
+//!   │    EventOrganizer → TransferTracker (memory) + DB         │
+//!   │                                                           │
+//!   │  On mismatch:                                             │
+//!   │    Telegram alert + emergency pause (both chains)         │
+//!   └──────────────────────────────────────────────────────────┘
 //! ```
-//!
-//! ## Trigger Points
-//!
-//! 1. Real-time: When TransferTracker notifies of event changes
-//! 2. Periodic: Background scan of DB for unchecked transfers
 
+mod approval_verifier;
 mod config;
 mod detector;
 mod event_organizer;
-mod mismatch_checker;
 pub mod pause_executor;
 
+pub use approval_verifier::MismatchReason;
 pub use detector::{
     create_shared_security_monitor, MismatchInfo, SecurityMonitor, SecurityMonitorConfig,
     SharedSecurityMonitor,
 };
-pub use event_organizer::{
-    ApprovalEventData, ClaimEventData, DepositEventData, EventOrganizer, EventPair,
-};
-pub use mismatch_checker::{MismatchChecker, MismatchReason, MismatchResult};
+pub use event_organizer::{DepositEventData, EventOrganizer};
 pub use pause_executor::PauseExecutor;
 
 use std::sync::Arc;
@@ -69,20 +53,13 @@ use starcoin_bridge_pg_db::Db;
 pub struct SecurityMonitorResult {
     pub monitor: SharedSecurityMonitor,
     pub cancel: CancellationToken,
-    /// Handle for background task
     pub handle: JoinHandle<()>,
 }
 
-/// Start the security monitor
+/// Start the security monitor.
 ///
-/// This sets up:
-/// 1. EventOrganizer for gathering events from memory and DB
-/// 2. MismatchChecker for validating event pairs
-/// 3. Background task for periodic DB scanning
-/// 4. Notification mechanism for real-time event checking
-///
-/// Note: The monitor should only be activated AFTER both chains are caught up.
-/// Call `monitor.activate()` once ready.
+/// The monitor is NOT active immediately — call `monitor.activate()` after
+/// both chains have caught up to latest block.
 pub async fn start_security_monitor(
     config: detector::SecurityMonitorConfig,
     db: Db,
@@ -99,22 +76,14 @@ pub async fn start_security_monitor(
 
     let monitor = create_shared_security_monitor(
         config,
-        transfer_tracker.clone(),
+        transfer_tracker,
         db,
         network,
         telegram,
         cancel.clone(),
     );
 
-    // Set up notification callback on TransferTracker
-    let monitor_for_callback = monitor.clone();
-    let callback = Arc::new(move || {
-        monitor_for_callback.notify_event_change();
-    });
-    transfer_tracker.set_change_callback(callback).await;
-    info!("[SecurityMonitor] Change callback set on TransferTracker");
-
-    // Start background task
+    // Start background task (waits for activation, then runs periodic scan)
     let monitor_clone = monitor.clone();
     let handle = tokio::spawn(async move {
         monitor_clone.run().await;

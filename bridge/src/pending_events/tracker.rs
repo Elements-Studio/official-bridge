@@ -205,10 +205,11 @@ impl TransferTracker {
     ) -> Option<MismatchAlert> {
         let key = TransferKey::new(approval.source_chain, approval.nonce);
 
-        // Check if deposit exists in finalized deposits
-        let has_finalized_deposit = {
+        // Check if deposit exists in finalized deposits (and retrieve it for record population)
+        let (has_finalized_deposit, finalized_deposit) = {
             let finalized = self.finalized_deposits.read().await;
-            finalized.contains_key(&key)
+            let deposit = finalized.get(&key).cloned();
+            (deposit.is_some(), deposit)
         };
 
         let mut pending = self.pending.write().await;
@@ -229,6 +230,16 @@ impl TransferTracker {
                 is_finalized: false,
             });
             existing.status = TransferStatus::Approved;
+            // Backfill deposit from finalized_deposits if missing in record
+            if existing.deposit.is_none() {
+                if let Some(deposit) = finalized_deposit.clone() {
+                    info!(
+                        "[TransferTracker] Backfilled deposit from finalized_deposits for {}",
+                        key
+                    );
+                    existing.deposit = Some(deposit);
+                }
+            }
             info!(
                 "[TransferTracker] Approval recorded: key={}, tx={}, block={}, has_deposit={}",
                 key,
@@ -238,13 +249,13 @@ impl TransferTracker {
             );
             existing.deposit.is_some()
         } else {
-            // No pending record - create one
+            // No pending record - create one, populating deposit from finalized_deposits if available
             pending.insert(
                 key,
                 TransferRecord {
                     key,
                     status: TransferStatus::Approved,
-                    deposit: None,
+                    deposit: finalized_deposit,
                     approval: Some(ApprovalInfo {
                         tx_hash: event.tx_hash.clone(),
                         block_number: event.block_number,
@@ -256,10 +267,10 @@ impl TransferTracker {
                 },
             );
             info!(
-                "[TransferTracker] Approval recorded (no pending deposit): key={}, tx={}, block={}",
-                key, event.tx_hash, event.block_number
+                "[TransferTracker] Approval recorded (no pending deposit, finalized_deposit={}): key={}, tx={}, block={}",
+                has_finalized_deposit, key, event.tx_hash, event.block_number
             );
-            false
+            has_finalized_deposit
         };
 
         // Notify SecurityMonitor of event change
@@ -381,13 +392,29 @@ impl TransferTracker {
         if let Some(existing) = pending.get_mut(&key) {
             existing.claim = Some(claim_info);
             existing.status = TransferStatus::Claimed;
+            // Backfill deposit from finalized_deposits if missing in record
+            if existing.deposit.is_none() {
+                if let Some(deposit) = &deposit_info {
+                    info!(
+                        "[TransferTracker] Backfilled deposit from finalized_deposits for claim {}",
+                        key
+                    );
+                    existing.deposit = Some(deposit.clone());
+                }
+            }
         } else {
             pending.insert(
                 key,
                 TransferRecord {
                     key,
                     status: TransferStatus::Claimed,
-                    deposit: None,
+                    deposit: deposit_info.map(|d| {
+                        info!(
+                            "[TransferTracker] Populated deposit from finalized_deposits for new claim record {}",
+                            key
+                        );
+                        d
+                    }),
                     approval: None,
                     claim: Some(claim_info),
                 },
