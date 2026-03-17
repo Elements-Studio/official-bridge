@@ -81,6 +81,35 @@ impl NetworkType {
         };
         bridge_id as u8 as i32
     }
+
+    /// Convert a bridge chain ID (i32 from DB) back to a `ChainId` enum.
+    ///
+    /// Panics if the value doesn't match either chain for this network.
+    pub fn bridge_i32_to_chain_id(&self, bridge_id: i32) -> ChainId {
+        let stc = self.chain_id_to_bridge_i32(ChainId::Starcoin);
+        let eth = self.chain_id_to_bridge_i32(ChainId::Eth);
+        if bridge_id == stc {
+            ChainId::Starcoin
+        } else if bridge_id == eth {
+            ChainId::Eth
+        } else {
+            panic!(
+                "Unknown bridge chain_id {} for {:?} (expected stc={} or eth={})",
+                bridge_id, self, stc, eth
+            );
+        }
+    }
+
+    /// Given one chain's bridge ID (i32), return the OTHER chain's bridge ID.
+    ///
+    /// In a 2-chain bridge, the "other" chain of STC is ETH and vice versa.
+    pub fn other_bridge_chain_id(&self, bridge_id: i32) -> i32 {
+        let chain = self.bridge_i32_to_chain_id(bridge_id);
+        match chain {
+            ChainId::Starcoin => self.chain_id_to_bridge_i32(ChainId::Eth),
+            ChainId::Eth => self.chain_id_to_bridge_i32(ChainId::Starcoin),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -294,6 +323,151 @@ mod tests {
                 chain_id_to_name(network.chain_id_to_bridge_i32(ChainId::Eth)),
                 "ETH",
                 "ChainId::Eth should resolve to ETH for {:?}",
+                network
+            );
+        }
+    }
+
+    // === bridge_i32_to_chain_id tests ===
+
+    #[test]
+    fn test_bridge_i32_to_chain_id_local() {
+        let network = NetworkType::Local;
+        assert_eq!(network.bridge_i32_to_chain_id(2), ChainId::Starcoin);
+        assert_eq!(network.bridge_i32_to_chain_id(12), ChainId::Eth);
+    }
+
+    #[test]
+    fn test_bridge_i32_to_chain_id_testnet() {
+        let network = NetworkType::Testnet;
+        assert_eq!(network.bridge_i32_to_chain_id(1), ChainId::Starcoin);
+        assert_eq!(network.bridge_i32_to_chain_id(11), ChainId::Eth);
+    }
+
+    #[test]
+    fn test_bridge_i32_to_chain_id_mainnet() {
+        let network = NetworkType::Mainnet;
+        assert_eq!(network.bridge_i32_to_chain_id(0), ChainId::Starcoin);
+        assert_eq!(network.bridge_i32_to_chain_id(10), ChainId::Eth);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown bridge chain_id")]
+    fn test_bridge_i32_to_chain_id_unknown() {
+        NetworkType::Local.bridge_i32_to_chain_id(99);
+    }
+
+    #[test]
+    fn test_bridge_i32_to_chain_id_roundtrip() {
+        for network in [NetworkType::Local, NetworkType::Testnet, NetworkType::Mainnet] {
+            for chain in [ChainId::Starcoin, ChainId::Eth] {
+                let bridge_id = network.chain_id_to_bridge_i32(chain);
+                assert_eq!(
+                    network.bridge_i32_to_chain_id(bridge_id),
+                    chain,
+                    "Roundtrip failed for {:?} on {:?}",
+                    chain,
+                    network
+                );
+            }
+        }
+    }
+
+    // === other_bridge_chain_id tests ===
+
+    #[test]
+    fn test_other_bridge_chain_id_local() {
+        let network = NetworkType::Local;
+        assert_eq!(network.other_bridge_chain_id(2), 12);  // STC -> ETH
+        assert_eq!(network.other_bridge_chain_id(12), 2);  // ETH -> STC
+    }
+
+    #[test]
+    fn test_other_bridge_chain_id_all_networks() {
+        for network in [NetworkType::Local, NetworkType::Testnet, NetworkType::Mainnet] {
+            let stc = network.chain_id_to_bridge_i32(ChainId::Starcoin);
+            let eth = network.chain_id_to_bridge_i32(ChainId::Eth);
+            assert_eq!(network.other_bridge_chain_id(stc), eth);
+            assert_eq!(network.other_bridge_chain_id(eth), stc);
+        }
+    }
+
+    // === Regression tests: enum discriminant vs bridge chain ID ===
+
+    #[test]
+    fn test_enum_discriminant_not_confused_with_bridge_id() {
+        // Regression test: the old chain_id_to_enum() compared DB values against
+        // ChainId enum discriminants (Starcoin=0, Eth=1) instead of actual bridge
+        // chain IDs. This caused chain_id_to_enum(2) to return Eth on Local
+        // (because 2 != 0), when it should be Starcoin (bridge ID 2 = STC/Local).
+        let stc_discriminant = ChainId::Starcoin as i32; // 0
+        let eth_discriminant = ChainId::Eth as i32; // 1
+
+        // For Local (STC=2, ETH=12): enum discriminants 0 and 1 are NOT valid bridge IDs
+        let local = NetworkType::Local;
+        assert_ne!(stc_discriminant, local.chain_id_to_bridge_i32(ChainId::Starcoin));
+        assert_ne!(eth_discriminant, local.chain_id_to_bridge_i32(ChainId::Starcoin));
+        assert_ne!(stc_discriminant, local.chain_id_to_bridge_i32(ChainId::Eth));
+        assert_ne!(eth_discriminant, local.chain_id_to_bridge_i32(ChainId::Eth));
+
+        // For Testnet (STC=1, ETH=11): eth_discriminant(1)==STC bridge ID (coincidence!)
+        // The old buggy code would map 1 → Eth (wrong), but correct code maps 1 → Starcoin.
+        let testnet = NetworkType::Testnet;
+        assert_eq!(
+            testnet.bridge_i32_to_chain_id(eth_discriminant), // bridge_i32_to_chain_id(1)
+            ChainId::Starcoin, // 1 is the STC bridge ID on Testnet, NOT Eth
+            "Testnet: bridge ID 1 must map to Starcoin, not Eth"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown bridge chain_id")]
+    fn test_bridge_i32_rejects_enum_discriminant_on_local() {
+        // ChainId::Starcoin as i32 = 0, but Local STC bridge ID = 2
+        // Passing the enum discriminant must fail, not silently map to wrong chain
+        NetworkType::Local.bridge_i32_to_chain_id(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown bridge chain_id")]
+    fn test_bridge_i32_rejects_eth_discriminant_on_local() {
+        // ChainId::Eth as i32 = 1, but Local ETH bridge ID = 12
+        NetworkType::Local.bridge_i32_to_chain_id(1);
+    }
+
+    // === Semantic tests: approval chain → source chain mapping ===
+
+    #[test]
+    fn test_other_bridge_chain_id_semantic() {
+        // other_bridge_chain_id returns the opposite chain in the bridge pair.
+        // NOTE: token_transfer.chain_id stores the SOURCE chain of the transfer,
+        // NOT the chain where the event was recorded. So for deposit lookup in
+        // get_unchecked_approvals(), use chain_id directly as source_chain.
+        for network in [NetworkType::Local, NetworkType::Testnet, NetworkType::Mainnet] {
+            let stc_id = network.chain_id_to_bridge_i32(ChainId::Starcoin);
+            let eth_id = network.chain_id_to_bridge_i32(ChainId::Eth);
+
+            // Approval on STC → deposit source is ETH
+            assert_eq!(
+                network.other_bridge_chain_id(stc_id),
+                eth_id,
+                "Approval on STC should map to ETH deposit for {:?}",
+                network
+            );
+
+            // Approval on ETH → deposit source is STC
+            assert_eq!(
+                network.other_bridge_chain_id(eth_id),
+                stc_id,
+                "Approval on ETH should map to STC deposit for {:?}",
+                network
+            );
+
+            // Double-flip = identity
+            assert_eq!(
+                network.other_bridge_chain_id(network.other_bridge_chain_id(stc_id)),
+                stc_id,
+                "Double flip must be identity for {:?}",
                 network
             );
         }

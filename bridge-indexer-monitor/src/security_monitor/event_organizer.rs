@@ -1,37 +1,43 @@
-//! Event Organizer Module
+//! Event Organizer
 //!
-//! Responsible for organizing bridge events into (deposit, approval, claim) pairs
-//! for mismatch checking. Data sources:
-//! - TransferTracker: in-memory pending events
-//! - Database: persisted events
+//! Provides deposit lookup for approval verification from two data sources:
+//! - TransferTracker: in-memory pending (unfinalized) events
+//! - Database: persisted finalized events
 //!
-//! This module provides a unified interface for gathering events from different
-//! sources and organizing them into checkable pairs.
+//! Also handles:
+//! - Querying unchecked approvals from DB (for periodic scan)
+//! - Marking verified approvals in DB
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
-use starcoin_bridge::pending_events::{
-    ApprovalEvent, ChainId, ClaimEvent, DepositEvent, PendingEventType, TransferKey,
-    TransferTracker,
-};
+use async_trait::async_trait;
+use starcoin_bridge::pending_events::{ChainId, DepositEvent, TransferKey, TransferTracker};
 use starcoin_bridge_pg_db::Db;
-use starcoin_bridge_schema::models::TokenTransferData;
+use starcoin_bridge_schema::models::{TokenTransfer, TokenTransferData};
+use starcoin_bridge_schema::schema::token_transfer::dsl as tt_status_dsl;
 use starcoin_bridge_schema::schema::token_transfer_data::dsl as tt_dsl;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::network::NetworkType;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 
-/// Event pair for mismatch checking
-#[derive(Debug, Clone)]
-pub struct EventPair {
-    pub key: TransferKey,
-    pub deposit: Option<DepositEventData>,
-    pub approval: Option<ApprovalEventData>,
-    pub claim: Option<ClaimEventData>,
+/// Trait for deposit lookup and approval management, enabling testability.
+///
+/// `SecurityMonitor` depends on this trait rather than concrete `EventOrganizer`,
+/// so behavioral tests can use a mock implementation without a real database.
+#[async_trait]
+pub(crate) trait DepositLookup: Send + Sync {
+    /// Find deposit for (source_chain, nonce). Checks memory first, then DB.
+    async fn find_deposit(&self, key: &TransferKey) -> Result<Option<DepositEventData>>;
+
+    /// Get approvals from DB that haven't been verified yet.
+    async fn get_unchecked_approvals(&self, limit: i64) -> Result<Vec<UncheckedApproval>>;
+
+    /// Mark a deposit as monitor_verified.
+    async fn mark_verified(&self, source_chain: ChainId, nonce: u64) -> Result<()>;
 }
 
 /// Deposit event data (unified from memory/DB)
@@ -46,33 +52,15 @@ pub struct DepositEventData {
     pub recipient_address: String,
     pub tx_hash: String,
     pub block_height: u64,
-    pub from_db: bool,
 }
 
-/// Approval event data (unified from memory/DB)
+/// An approval record from DB that needs verification
 #[derive(Debug, Clone)]
-pub struct ApprovalEventData {
+pub struct UncheckedApproval {
     pub source_chain: ChainId,
     pub nonce: u64,
-    pub recorded_chain: ChainId,
     pub tx_hash: String,
     pub block_height: u64,
-    pub from_db: bool,
-}
-
-/// Claim event data (unified from memory/DB)
-#[derive(Debug, Clone)]
-pub struct ClaimEventData {
-    pub source_chain: ChainId,
-    pub nonce: u64,
-    pub destination_chain: ChainId,
-    pub token_id: u8,
-    pub amount: u64,
-    pub recipient_address: String,
-    pub claimer_address: String,
-    pub tx_hash: String,
-    pub block_height: u64,
-    pub from_db: bool,
 }
 
 impl From<&DepositEvent> for DepositEventData {
@@ -85,47 +73,13 @@ impl From<&DepositEvent> for DepositEventData {
             amount: e.amount,
             sender_address: e.sender_address.clone(),
             recipient_address: e.recipient_address.clone(),
-            tx_hash: String::new(), // Will be set from PendingEvent
+            tx_hash: String::new(),
             block_height: e.block_number,
-            from_db: false,
         }
     }
 }
 
-impl From<&ApprovalEvent> for ApprovalEventData {
-    fn from(e: &ApprovalEvent) -> Self {
-        Self {
-            source_chain: e.source_chain,
-            nonce: e.nonce,
-            recorded_chain: e.recorded_chain,
-            tx_hash: String::new(), // Will be set from PendingEvent
-            block_height: e.block_number,
-            from_db: false,
-        }
-    }
-}
-
-impl From<&ClaimEvent> for ClaimEventData {
-    fn from(e: &ClaimEvent) -> Self {
-        Self {
-            source_chain: e.source_chain,
-            nonce: e.nonce,
-            destination_chain: e.destination_chain,
-            token_id: e.token_id,
-            amount: e.amount,
-            recipient_address: e.recipient_address.clone(),
-            claimer_address: e.claimer_address.clone(),
-            tx_hash: String::new(), // Will be set from PendingEvent
-            block_height: e.block_number,
-            from_db: false,
-        }
-    }
-}
-
-/// Event Organizer
-///
-/// Gathers events from TransferTracker and/or DB, organizes them into
-/// (deposit, approval, claim) pairs by TransferKey.
+/// Gathers deposit data from memory and DB for approval verification.
 pub struct EventOrganizer {
     transfer_tracker: Arc<TransferTracker>,
     db: Db,
@@ -141,377 +95,182 @@ impl EventOrganizer {
         }
     }
 
-    /// Get all event pairs from in-memory TransferTracker
+    /// Find the deposit for a given (source_chain, nonce), checking memory first then DB.
     ///
-    /// This is called when we want to check pending (unfinalized) events.
-    pub async fn get_pending_pairs(&self) -> Vec<EventPair> {
-        let mut pairs: HashMap<TransferKey, EventPair> = HashMap::new();
-
-        // Get all pending events from tracker
-        let pending_events = self.transfer_tracker.get_all_pending_events().await;
-
-        for (key, events) in pending_events {
-            let pair = pairs.entry(key).or_insert_with(|| EventPair {
-                key,
-                deposit: None,
-                approval: None,
-                claim: None,
-            });
-
-            for pending in events {
-                match &pending.event {
-                    PendingEventType::Deposit(deposit) => {
-                        let mut data = DepositEventData::from(deposit);
-                        data.tx_hash = pending.tx_hash.clone();
-                        pair.deposit = Some(data);
-                    }
-                    PendingEventType::Approval(approval) => {
-                        let mut data = ApprovalEventData::from(approval);
-                        data.tx_hash = pending.tx_hash.clone();
-                        pair.approval = Some(data);
-                    }
-                    PendingEventType::Claim(claim) => {
-                        let mut data = ClaimEventData::from(claim);
-                        data.tx_hash = pending.tx_hash.clone();
-                        pair.claim = Some(data);
-                    }
-                }
-            }
+    /// This is the core lookup used by both real-time and periodic scan paths.
+    pub async fn find_deposit(&self, key: &TransferKey) -> Result<Option<DepositEventData>> {
+        // 1. Check in-memory TransferTracker (pending + finalized deposits)
+        if let Some(deposit) = self.find_deposit_in_memory(key).await {
+            return Ok(Some(deposit));
         }
 
-        pairs.into_values().collect()
+        // 2. Fall back to DB
+        self.find_deposit_in_db(key).await
     }
 
-    /// Get event pair for a specific key, combining memory and DB data
-    ///
-    /// This is used when a new event arrives and we want to check it with
-    /// any existing data from both memory and DB.
-    pub async fn get_pair_for_key(&self, key: &TransferKey) -> Result<EventPair> {
-        let mut pair = EventPair {
-            key: *key,
-            deposit: None,
-            approval: None,
-            claim: None,
-        };
+    /// Check in-memory TransferTracker for deposit
+    async fn find_deposit_in_memory(&self, key: &TransferKey) -> Option<DepositEventData> {
+        use starcoin_bridge::pending_events::PendingEventType;
 
-        // First, check memory
-        if let Some(events) = self.transfer_tracker.get_events_for_key(key).await {
-            for pending in events {
-                match &pending.event {
-                    PendingEventType::Deposit(deposit) => {
-                        let mut data = DepositEventData::from(deposit);
-                        data.tx_hash = pending.tx_hash.clone();
-                        pair.deposit = Some(data);
-                    }
-                    PendingEventType::Approval(approval) => {
-                        let mut data = ApprovalEventData::from(approval);
-                        data.tx_hash = pending.tx_hash.clone();
-                        pair.approval = Some(data);
-                    }
-                    PendingEventType::Claim(claim) => {
-                        let mut data = ClaimEventData::from(claim);
-                        data.tx_hash = pending.tx_hash.clone();
-                        pair.claim = Some(data);
-                    }
-                }
+        let events = self.transfer_tracker.get_events_for_key(key).await?;
+        for pending in events {
+            if let PendingEventType::Deposit(deposit) = &pending.event {
+                let mut data = DepositEventData::from(deposit);
+                data.tx_hash = pending.tx_hash.clone();
+                return Some(data);
             }
         }
-
-        // Then, check DB for any missing pieces
-        // Use network-aware chain ID conversion for DB queries
-        let chain_id = self.network.chain_id_to_bridge_i32(key.source_chain);
-
-        if let Err(e) = self
-            .fill_from_db(&mut pair, chain_id, key.nonce as i64)
-            .await
-        {
-            warn!(
-                "[EventOrganizer] Failed to query DB for key {:?}: {}",
-                key, e
-            );
-        }
-
-        Ok(pair)
+        None
     }
 
-    /// Get unchecked pairs from database
-    ///
-    /// This queries the DB for transfers that haven't been verified by the monitor yet.
-    /// Returns pairs organized by (source_chain, nonce).
-    pub async fn get_unchecked_pairs_from_db(&self, limit: i64) -> Result<Vec<EventPair>> {
-        let mut conn = self.db.connect().await?;
-
-        // Query transfers that are not yet monitor_verified
-        // Group by (chain_id, nonce) to form pairs
-        let transfers: Vec<TokenTransferData> = tt_dsl::token_transfer_data
-            .filter(tt_dsl::monitor_verified.eq(false))
-            .order(tt_dsl::block_height.asc())
-            .limit(limit)
-            .load(&mut conn)
-            .await?;
-
-        if transfers.is_empty() {
-            return Ok(vec![]);
-        }
-
-        debug!(
-            "[EventOrganizer] Found {} unchecked transfers in DB",
-            transfers.len()
-        );
-
-        // Organize into pairs by (source_chain_id, nonce)
-        // For deposits: source_chain = chain_id (where deposit is recorded)
-        // For claims: source_chain = the OTHER chain (since claim is on destination)
-        let mut pairs: HashMap<(i32, i64), EventPair> = HashMap::new();
-
-        for transfer in transfers {
-            let tx_hash = hex::encode(&transfer.txn_hash);
-
-            // Determine event type and source_chain based on chain relationship
-            if transfer.destination_chain != transfer.chain_id {
-                // This is a deposit (recorded on source chain)
-                // source_chain = chain_id
-                let source_chain = self.chain_id_to_enum(transfer.chain_id);
-                let key = TransferKey::new(source_chain, transfer.nonce as u64);
-
-                let pair = pairs
-                    .entry((transfer.chain_id, transfer.nonce))
-                    .or_insert_with(|| EventPair {
-                        key,
-                        deposit: None,
-                        approval: None,
-                        claim: None,
-                    });
-
-                pair.deposit = Some(DepositEventData {
-                    source_chain,
-                    nonce: transfer.nonce as u64,
-                    destination_chain: self.chain_id_to_enum(transfer.destination_chain),
-                    token_id: transfer.token_id as u8,
-                    amount: transfer.amount as u64,
-                    sender_address: hex::encode(&transfer.sender_address),
-                    recipient_address: hex::encode(&transfer.recipient_address),
-                    tx_hash,
-                    block_height: transfer.block_height as u64,
-                    from_db: true,
-                });
-            } else {
-                // This is a claim (recorded on destination chain)
-                // source_chain = the OTHER chain (not where the claim was recorded)
-                // Since we only have ETH and STC, source = the chain that isn't destination
-                let source_chain_id = self.get_other_chain_id(transfer.chain_id);
-                let source_chain = self.chain_id_to_enum(source_chain_id);
-                let key = TransferKey::new(source_chain, transfer.nonce as u64);
-
-                let pair = pairs
-                    .entry((source_chain_id, transfer.nonce))
-                    .or_insert_with(|| EventPair {
-                        key,
-                        deposit: None,
-                        approval: None,
-                        claim: None,
-                    });
-
-                pair.claim = Some(ClaimEventData {
-                    source_chain,
-                    nonce: transfer.nonce as u64,
-                    destination_chain: self.chain_id_to_enum(transfer.destination_chain),
-                    token_id: transfer.token_id as u8,
-                    amount: transfer.amount as u64,
-                    recipient_address: hex::encode(&transfer.recipient_address),
-                    claimer_address: hex::encode(&transfer.sender_address),
-                    tx_hash,
-                    block_height: transfer.block_height as u64,
-                    from_db: true,
-                });
-            }
-        }
-
-        // CRITICAL: Fill in missing deposits for pairs that have approvals or claims but no deposit
-        // This handles the case where deposit was already verified but approval/claim is not
-        let mut result_pairs: Vec<EventPair> = Vec::new();
-        for ((source_chain_id, nonce), mut pair) in pairs {
-            // Fill deposit if we have approval or claim but no deposit
-            if (pair.approval.is_some() || pair.claim.is_some()) && pair.deposit.is_none() {
-                // Query for the deposit on the source chain (may already be verified)
-                if let Err(e) = self
-                    .fill_deposit_from_db(&mut pair, source_chain_id, nonce)
-                    .await
-                {
-                    warn!(
-                        "[EventOrganizer] Failed to fill deposit for source_chain={}, nonce={}: {}",
-                        source_chain_id, nonce, e
-                    );
-                }
-            }
-            result_pairs.push(pair);
-        }
-
-        Ok(result_pairs)
-    }
-
-    /// Fill missing parts of an event pair from the database
-    async fn fill_from_db(&self, pair: &mut EventPair, chain_id: i32, nonce: i64) -> Result<()> {
-        let mut conn = self.db.connect().await?;
-
-        // Query deposits: chain_id = source_chain (where deposit was made)
-        // and destination_chain != chain_id (to ensure it's a deposit from this chain, not a claim)
-        let deposit_transfers: Vec<TokenTransferData> = tt_dsl::token_transfer_data
-            .filter(tt_dsl::nonce.eq(nonce))
-            .filter(tt_dsl::chain_id.eq(chain_id))
-            .filter(tt_dsl::destination_chain.ne(chain_id))
-            .load(&mut conn)
-            .await?;
-
-        // Query claims: Claims are recorded on destination chain where destination_chain = chain_id
-        // and source chain is the other chain
-        let other_chain_id = self.get_other_chain_id(chain_id);
-        let claim_transfers: Vec<TokenTransferData> = tt_dsl::token_transfer_data
-            .filter(tt_dsl::nonce.eq(nonce))
-            .filter(tt_dsl::chain_id.eq(other_chain_id))
-            .filter(tt_dsl::destination_chain.eq(other_chain_id))
-            .load(&mut conn)
-            .await?;
-
-        for transfer in deposit_transfers.into_iter() {
-            let tx_hash = hex::encode(&transfer.txn_hash);
-
-            if pair.deposit.is_none() {
-                let source_chain = self.chain_id_to_enum(transfer.chain_id);
-                pair.deposit = Some(DepositEventData {
-                    source_chain,
-                    nonce: transfer.nonce as u64,
-                    destination_chain: self.chain_id_to_enum(transfer.destination_chain),
-                    token_id: transfer.token_id as u8,
-                    amount: transfer.amount as u64,
-                    sender_address: hex::encode(&transfer.sender_address),
-                    recipient_address: hex::encode(&transfer.recipient_address),
-                    tx_hash,
-                    block_height: transfer.block_height as u64,
-                    from_db: true,
-                });
-            }
-        }
-
-        for transfer in claim_transfers.into_iter() {
-            let tx_hash = hex::encode(&transfer.txn_hash);
-
-            if pair.claim.is_none() {
-                // source_chain is the OTHER chain (deposit was on source, claim is on destination)
-                let source_chain = self.chain_id_to_enum(chain_id);
-                pair.claim = Some(ClaimEventData {
-                    source_chain,
-                    nonce: transfer.nonce as u64,
-                    destination_chain: self.chain_id_to_enum(transfer.destination_chain),
-                    token_id: transfer.token_id as u8,
-                    amount: transfer.amount as u64,
-                    recipient_address: hex::encode(&transfer.recipient_address),
-                    claimer_address: hex::encode(&transfer.sender_address),
-                    tx_hash,
-                    block_height: transfer.block_height as u64,
-                    from_db: true,
-                });
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Fill deposit from DB for a specific (source_chain, nonce), regardless of verified status
-    /// This is used when we find an unchecked claim but the deposit was already verified.
-    async fn fill_deposit_from_db(
-        &self,
-        pair: &mut EventPair,
-        source_chain_id: i32,
-        nonce: i64,
-    ) -> Result<()> {
-        let mut conn = self.db.connect().await?;
-
-        // Query for deposit: chain_id = source_chain, destination_chain != chain_id
-        let transfers: Vec<TokenTransferData> = tt_dsl::token_transfer_data
-            .filter(tt_dsl::chain_id.eq(source_chain_id))
-            .filter(tt_dsl::nonce.eq(nonce))
-            .filter(tt_dsl::destination_chain.ne(source_chain_id))
-            .load(&mut conn)
-            .await?;
-
-        for transfer in transfers {
-            if pair.deposit.is_none() {
-                let source_chain = self.chain_id_to_enum(transfer.chain_id);
-                let tx_hash = hex::encode(&transfer.txn_hash);
-                pair.deposit = Some(DepositEventData {
-                    source_chain,
-                    nonce: transfer.nonce as u64,
-                    destination_chain: self.chain_id_to_enum(transfer.destination_chain),
-                    token_id: transfer.token_id as u8,
-                    amount: transfer.amount as u64,
-                    sender_address: hex::encode(&transfer.sender_address),
-                    recipient_address: hex::encode(&transfer.recipient_address),
-                    tx_hash,
-                    block_height: transfer.block_height as u64,
-                    from_db: true,
-                });
-                debug!(
-                    "[EventOrganizer] Filled missing deposit for source_chain={}, nonce={}",
-                    source_chain_id, nonce
-                );
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Convert chain_id (stored as enum value in DB) to ChainId enum
-    /// DB stores: Starcoin=0, Eth=1
-    fn chain_id_to_enum(&self, chain_id: i32) -> ChainId {
-        if chain_id == ChainId::Starcoin as i32 {
-            ChainId::Starcoin
-        } else {
-            ChainId::Eth
-        }
-    }
-
-    /// Get the other chain ID (for claims where we need to determine source)
-    /// Since we only have ETH and STC, source = the chain that isn't destination
-    /// Uses DB enum values: Starcoin=0, Eth=1
-    fn get_other_chain_id(&self, chain_id: i32) -> i32 {
-        if chain_id == ChainId::Starcoin as i32 {
-            ChainId::Eth as i32
-        } else {
-            ChainId::Starcoin as i32
-        }
-    }
-
-    /// Check if a deposit exists for the given key (memory or DB)
-    ///
-    /// This is used to re-verify deferred alerts after grace period.
-    pub async fn deposit_exists(&self, key: &TransferKey) -> bool {
-        // First check TransferTracker (pending + finalized memory)
-        if self.transfer_tracker.has_deposit(key).await {
-            return true;
-        }
-
-        // Then check DB
+    /// Query DB for deposit matching (source_chain, nonce)
+    async fn find_deposit_in_db(&self, key: &TransferKey) -> Result<Option<DepositEventData>> {
         let chain_id = self.network.chain_id_to_bridge_i32(key.source_chain);
         let nonce = key.nonce as i64;
 
-        if let Ok(mut conn) = self.db.connect().await {
-            // Query for deposit record in token_transfer_data
-            let result: Result<Option<TokenTransferData>, _> = tt_dsl::token_transfer_data
-                .filter(tt_dsl::chain_id.eq(chain_id))
-                .filter(tt_dsl::nonce.eq(nonce))
-                .filter(tt_dsl::destination_chain.ne(chain_id)) // deposit: source != destination
-                .first(&mut conn)
-                .await
-                .optional();
+        let mut conn = self.db.connect().await?;
 
-            if let Ok(Some(_)) = result {
-                return true;
+        // Deposit: chain_id = source_chain, destination_chain != chain_id
+        let transfer: Option<TokenTransferData> = tt_dsl::token_transfer_data
+            .filter(tt_dsl::chain_id.eq(chain_id))
+            .filter(tt_dsl::nonce.eq(nonce))
+            .filter(tt_dsl::destination_chain.ne(chain_id))
+            .first(&mut conn)
+            .await
+            .optional()?;
+
+        Ok(transfer.map(|t| {
+            let source_chain = self.chain_id_to_enum(t.chain_id);
+            DepositEventData {
+                source_chain,
+                nonce: t.nonce as u64,
+                destination_chain: self.chain_id_to_enum(t.destination_chain),
+                token_id: t.token_id as u8,
+                amount: t.amount as u64,
+                sender_address: hex::encode(&t.sender_address),
+                recipient_address: hex::encode(&t.recipient_address),
+                tx_hash: hex::encode(&t.txn_hash),
+                block_height: t.block_height as u64,
             }
+        }))
+    }
+
+    /// Get approvals from DB that haven't been verified yet.
+    ///
+    /// Two-phase approach:
+    ///   1. Load the set of already-verified (chain_id, nonce) deposit pairs.
+    ///   2. Load all Approved records, filter out verified ones, take up to `limit`.
+    ///
+    /// This ensures LIMIT applies AFTER filtering, so verified old records
+    /// cannot push genuinely unchecked approvals out of the result window.
+    pub async fn get_unchecked_approvals(&self, limit: i64) -> Result<Vec<UncheckedApproval>> {
+        let mut conn = self.db.connect().await?;
+        let stc_bridge_id = self.network.chain_id_to_bridge_i32(ChainId::Starcoin);
+        let eth_bridge_id = self.network.chain_id_to_bridge_i32(ChainId::Eth);
+
+        // Phase 1: Build a set of verified (source_chain_id, nonce) deposit pairs.
+        // Size = number of verified deposits, bounded and grows slowly.
+        let verified: Vec<(i32, i64)> = tt_dsl::token_transfer_data
+            .select((tt_dsl::chain_id, tt_dsl::nonce))
+            .filter(tt_dsl::monitor_verified.eq(true))
+            .load(&mut conn)
+            .await?;
+        let verified_set: HashSet<(i32, i64)> = verified.into_iter().collect();
+
+        // Phase 2: Load Approved records on known chains, ordered by block_height.
+        // Total count = number of bridge transfers (bounded for a cross-chain bridge).
+        let approvals: Vec<TokenTransfer> = tt_status_dsl::token_transfer
+            .filter(tt_status_dsl::status.eq("Approved"))
+            .filter(
+                tt_status_dsl::chain_id
+                    .eq(stc_bridge_id)
+                    .or(tt_status_dsl::chain_id.eq(eth_bridge_id)),
+            )
+            .order(tt_status_dsl::block_height.asc())
+            .load(&mut conn)
+            .await?;
+
+        // Filter: keep approvals whose source-chain deposit is NOT yet verified.
+        // token_transfer.chain_id = source chain of the transfer (same for all
+        // status rows of a given transfer), so use it directly as the deposit key.
+        let mut unchecked = Vec::new();
+        for approval in &approvals {
+            if unchecked.len() >= limit as usize {
+                break;
+            }
+
+            let source_chain_id = approval.chain_id;
+
+            if verified_set.contains(&(source_chain_id, approval.nonce)) {
+                continue;
+            }
+
+            unchecked.push(UncheckedApproval {
+                source_chain: self.chain_id_to_enum(source_chain_id),
+                nonce: approval.nonce as u64,
+                tx_hash: hex::encode(&approval.txn_hash),
+                block_height: approval.block_height as u64,
+            });
         }
 
-        false
+        if !unchecked.is_empty() {
+            debug!(
+                "[EventOrganizer] Found {} unchecked approvals in DB",
+                unchecked.len()
+            );
+        }
+
+        Ok(unchecked)
+    }
+
+    /// Mark a deposit as monitor_verified after successful approval verification.
+    pub async fn mark_verified(&self, source_chain: ChainId, nonce: u64) -> Result<()> {
+        let chain_id = self.network.chain_id_to_bridge_i32(source_chain);
+        let nonce_i64 = nonce as i64;
+
+        let mut conn = self.db.connect().await?;
+
+        let updated = diesel::update(
+            tt_dsl::token_transfer_data
+                .filter(tt_dsl::chain_id.eq(chain_id))
+                .filter(tt_dsl::nonce.eq(nonce_i64)),
+        )
+        .set(tt_dsl::monitor_verified.eq(true))
+        .execute(&mut conn)
+        .await?;
+
+        if updated > 0 {
+            info!(
+                "[EventOrganizer] Marked verified: source_chain={:?}, nonce={}",
+                source_chain, nonce
+            );
+        } else {
+            warn!(
+                "[EventOrganizer] No deposit found to mark verified: source_chain={:?}, nonce={}",
+                source_chain, nonce
+            );
+        }
+
+        Ok(())
+    }
+
+    fn chain_id_to_enum(&self, chain_id: i32) -> ChainId {
+        self.network.bridge_i32_to_chain_id(chain_id)
+    }
+}
+
+#[async_trait]
+impl DepositLookup for EventOrganizer {
+    async fn find_deposit(&self, key: &TransferKey) -> Result<Option<DepositEventData>> {
+        self.find_deposit(key).await
+    }
+
+    async fn get_unchecked_approvals(&self, limit: i64) -> Result<Vec<UncheckedApproval>> {
+        self.get_unchecked_approvals(limit).await
+    }
+
+    async fn mark_verified(&self, source_chain: ChainId, nonce: u64) -> Result<()> {
+        self.mark_verified(source_chain, nonce).await
     }
 }
 
@@ -535,21 +294,6 @@ mod tests {
         let data = DepositEventData::from(&deposit);
         assert_eq!(data.nonce, 123);
         assert_eq!(data.amount, 1000000);
-        assert!(!data.from_db);
-    }
-
-    #[test]
-    fn test_event_pair_creation() {
-        let key = TransferKey::new(ChainId::Eth, 100);
-        let pair = EventPair {
-            key,
-            deposit: None,
-            approval: None,
-            claim: None,
-        };
-
-        assert!(pair.deposit.is_none());
-        assert!(pair.approval.is_none());
-        assert!(pair.claim.is_none());
+        assert_eq!(data.token_id, 4);
     }
 }

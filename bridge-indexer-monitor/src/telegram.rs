@@ -21,14 +21,28 @@ use anyhow::Result;
 use reqwest::Client;
 use serde_json::json;
 use starcoin_bridge::pending_events::TransferRecord;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 use tracing::{info, warn};
 
+use crate::api::get_global_quota_cache;
 use crate::network::NetworkType;
 
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_SECS: u64 = 2;
+
+/// Structured bridge environment info for Telegram footers
+#[derive(Debug, Clone, Default)]
+pub struct BridgeEnvInfo {
+    pub eth_chain_name: String,
+    pub eth_chain_id: u8,
+    pub eth_contract: String,
+    pub stc_chain_name: String,
+    pub stc_chain_id: u8,
+    pub stc_contract: String,
+}
 
 /// Telegram notification configuration
 #[derive(Debug, Clone, Default)]
@@ -36,6 +50,8 @@ pub struct TelegramConfig {
     pub bot_token: String,
     pub chat_id: String,
     pub emergency_mention_users: Vec<String>,
+    /// Structured bridge environment info for footer
+    pub bridge_env: BridgeEnvInfo,
 }
 
 impl TelegramConfig {
@@ -148,11 +164,19 @@ impl BridgeNotifyEvent {
     }
 }
 
+/// Maximum number of dedup entries before clearing.
+/// This prevents unbounded memory growth while being large enough
+/// to cover any realistic burst of duplicate events.
+const DEDUP_CAPACITY: usize = 10_000;
+
 /// Telegram notifier for bridge events
 pub struct TelegramNotifier {
     config: TelegramConfig,
     client: Client,
     api_base: String,
+    /// Tracks already-sent finalized event IDs to prevent duplicate notifications.
+    /// Uses `BridgeNotifyEvent::event_id()` ("Type:tx_hash:nonce") as the key.
+    sent_events: Mutex<HashSet<String>>,
 }
 
 impl std::fmt::Debug for TelegramNotifier {
@@ -176,12 +200,50 @@ impl TelegramNotifier {
             config,
             client,
             api_base,
+            sent_events: Mutex::new(HashSet::new()),
         }
     }
 
     /// Check if Telegram is configured
     pub fn is_configured(&self) -> bool {
         self.config.is_configured()
+    }
+
+    /// Build environment footer with bridge info and current quota
+    async fn env_footer(&self) -> String {
+        let env = &self.config.bridge_env;
+        if env.eth_chain_name.is_empty() && env.stc_chain_name.is_empty() {
+            return String::new();
+        }
+
+        let mut lines = vec!["\n\n───────────".to_string()];
+        lines.push(format!(
+            "<b>ETH:</b> {} [{}] <code>{}</code>",
+            env.eth_chain_name, env.eth_chain_id, env.eth_contract
+        ));
+        lines.push(format!(
+            "<b>STC:</b> {} [{}] <code>{}</code>",
+            env.stc_chain_name, env.stc_chain_id, env.stc_contract
+        ));
+
+        // Append live quota if available
+        if let Some(cache) = get_global_quota_cache() {
+            let q = cache.get().await;
+            let decimals = q.decimals.0 as f64;
+            let fmt_quota = |v: Option<&crate::api::BigIntValue>| -> String {
+                match v {
+                    Some(bv) => format!("${:.2}", bv.0 as f64 / 10f64.powf(decimals)),
+                    None => "N/A".to_string(),
+                }
+            };
+            lines.push(format!(
+                "<b>Quota:</b> ETH claim {} · STC claim {}",
+                fmt_quota(q.eth_claim.as_ref()),
+                fmt_quota(q.starcoin_claim.as_ref()),
+            ));
+        }
+
+        lines.join("\n")
     }
 
     /// Send a raw message to Telegram
@@ -193,6 +255,8 @@ impl TelegramNotifier {
             );
             return Ok(());
         }
+
+        let text = format!("{}{}", text, self.env_footer().await);
 
         for attempt in 0..MAX_RETRIES {
             match self
@@ -249,12 +313,25 @@ impl TelegramNotifier {
         self.send_message(&message).await
     }
 
-    /// Notify about a finalized event
+    /// Notify about a finalized event.
+    /// Deduplicates by `event_id` so the same event is only sent once
+    /// even if multiple code paths trigger notification for it.
     pub async fn notify_finalized(
         &self,
         chain: NotifyChain,
         event: &BridgeNotifyEvent,
     ) -> Result<()> {
+        let key = event.event_id();
+        {
+            let mut sent = self.sent_events.lock().await;
+            if !sent.insert(key.clone()) {
+                info!("[Telegram] Skipping duplicate finalized notification: {}", key);
+                return Ok(());
+            }
+            if sent.len() > DEDUP_CAPACITY {
+                sent.clear();
+            }
+        }
         let message = self.format_event_message(chain, event, true);
         self.send_message(&message).await
     }
@@ -291,9 +368,8 @@ impl TelegramNotifier {
 
                 format!(
                     "<b>[Starcoin Bridge]</b> {}\n\
-                    🌉 <b>Bridge Transfer Initiated</b>\n\n\
+                    🌉 <b>Deposited</b>\n\n\
                     <b>Status:</b> {}\n\
-                    <b>Chain:</b> {}\n\
                     <b>Direction:</b> {} → {}\n\
                     <b>Token:</b> {}\n\
                     <b>Amount:</b> {}\n\
@@ -304,7 +380,6 @@ impl TelegramNotifier {
                     <b>Block:</b> {}",
                     if is_finalized { "📋" } else { "⏳" },
                     status,
-                    chain.name(),
                     source_chain,
                     dest_chain,
                     token,
@@ -335,9 +410,8 @@ impl TelegramNotifier {
 
                 format!(
                     "<b>[Starcoin Bridge]</b> {}\n\
-                    ✅ <b>Bridge Transfer Completed</b>\n\n\
+                    ✅ <b>Claimed</b>\n\n\
                     <b>Status:</b> {}\n\
-                    <b>Chain:</b> {}\n\
                     <b>Direction:</b> {} → {}\n\
                     <b>Token:</b> {}\n\
                     <b>Amount:</b> {}\n\
@@ -347,7 +421,6 @@ impl TelegramNotifier {
                     <b>Block:</b> {}",
                     if is_finalized { "📋" } else { "⏳" },
                     status,
-                    chain.name(),
                     source_chain,
                     dest_chain,
                     token,
@@ -492,7 +565,6 @@ impl TelegramNotifier {
                     "<b>[Starcoin Bridge]</b> {}\n\
                     🔐 <b>Transfer Approved</b>\n\n\
                     <b>Status:</b> {}\n\
-                    <b>Chain:</b> {}\n\
                     <b>Direction:</b> {} → {}\n\
                     <b>Token:</b> {}\n\
                     <b>Amount:</b> {}\n\
@@ -502,7 +574,6 @@ impl TelegramNotifier {
                     <b>Block:</b> {}",
                     if is_finalized { "📋" } else { "⏳" },
                     status,
-                    chain.name(),
                     source_chain,
                     dest_chain,
                     token,
@@ -705,12 +776,23 @@ fn get_token_name(token_id: u8) -> &'static str {
 /// This is used by finalize_and_persist_records paths where events transition
 /// from unfinalized (memory) to finalized (DB), and we need to send
 /// telegram notifications that were deferred during the unfinalized phase.
+///
+/// `caller_chain` filters events to only those observed on the caller's chain,
+/// preventing duplicate notifications when both ETH and STC handlers process
+/// the same shared TransferRecord:
+/// - Deposit: only if source_chain == caller_chain (deposit observed on source)
+/// - Approval: only if recorded_chain == caller_chain (approval recorded on destination)
+/// - Claim: only if source_chain != caller_chain (claim observed on destination)
 pub fn create_notify_events_from_record(
     record: &TransferRecord,
     network: NetworkType,
 ) -> Vec<BridgeNotifyEvent> {
     let mut events = Vec::new();
     let source_chain_id = network.chain_id_to_bridge_i32(record.key.source_chain) as u8;
+
+    // Emit all event types present in the record.
+    // Whichever handler finalizes the record sends all notifications;
+    // the dedup mechanism in notify_finalized prevents duplicates.
 
     if let Some(ref deposit) = record.deposit {
         let destination_chain_id =
@@ -753,13 +835,24 @@ pub fn create_notify_events_from_record(
             .as_ref()
             .map(|d| network.chain_id_to_bridge_i32(d.destination_chain) as u8)
             .unwrap_or(0);
+        // Fallback to deposit's recipient_address when claimer_address is empty
+        // (MoveTokenTransferClaimed on Starcoin doesn't include recipient info)
+        let recipient = if claim.claimer_address.is_empty() {
+            record
+                .deposit
+                .as_ref()
+                .map(|d| d.recipient_address.clone())
+                .unwrap_or_default()
+        } else {
+            claim.claimer_address.clone()
+        };
         events.push(BridgeNotifyEvent::Claim {
             source_chain_id,
             destination_chain_id,
             nonce: record.key.nonce,
             token_id: record.deposit.as_ref().map(|d| d.token_id).unwrap_or(0),
             amount: record.deposit.as_ref().map(|d| d.amount).unwrap_or(0),
-            recipient_address: claim.claimer_address.clone(),
+            recipient_address: recipient,
             tx_hash: claim.tx_hash.clone(),
             block_number: claim.block_number,
         });
