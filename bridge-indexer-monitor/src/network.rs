@@ -438,9 +438,11 @@ mod tests {
     // === Semantic tests: approval chain → source chain mapping ===
 
     #[test]
-    fn test_approval_to_source_chain_semantic() {
-        // An approval recorded on chain X means the deposit was on the OTHER chain.
-        // This is the core semantic used by get_unchecked_approvals().
+    fn test_other_bridge_chain_id_semantic() {
+        // other_bridge_chain_id returns the opposite chain in the bridge pair.
+        // NOTE: token_transfer.chain_id stores the SOURCE chain of the transfer,
+        // NOT the chain where the event was recorded. So for deposit lookup in
+        // get_unchecked_approvals(), use chain_id directly as source_chain.
         for network in [NetworkType::Local, NetworkType::Testnet, NetworkType::Mainnet] {
             let stc_id = network.chain_id_to_bridge_i32(ChainId::Starcoin);
             let eth_id = network.chain_id_to_bridge_i32(ChainId::Eth);

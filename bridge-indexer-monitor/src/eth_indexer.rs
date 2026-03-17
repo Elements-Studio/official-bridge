@@ -323,6 +323,17 @@ async fn process_syncer_events(
                                 }
                             }
 
+                            // Also store in TransferTracker for cross-chain correlation.
+                            // When ETH events are immediately finalized (e.g. Anvil with
+                            // confirmation_blocks=0), the other chain's handler still needs
+                            // the deposit in TransferTracker to finalize its approval/claim.
+                            // DB dedup (ON CONFLICT) and telegram dedup handle duplicates.
+                            for eth_log in &eth_logs {
+                                if let Err(e) = process_eth_log_to_memory(eth_log, &transfer_tracker, &security_monitor).await {
+                                    error!("[ETH] Failed to store finalized log in tracker: {:?}", e);
+                                }
+                            }
+
                             // Update watermark
                             if let Err(e) = progress_store.update_watermark(ETH_INDEXER_TASK_NAME, end_block).await {
                                 warn!("[ETH] Failed to update watermark: {:?}", e);

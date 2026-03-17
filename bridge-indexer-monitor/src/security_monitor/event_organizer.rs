@@ -191,18 +191,15 @@ impl EventOrganizer {
             .await?;
 
         // Filter: keep approvals whose source-chain deposit is NOT yet verified.
-        // approval.chain_id = recording/destination chain; source = OTHER chain.
+        // token_transfer.chain_id = source chain of the transfer (same for all
+        // status rows of a given transfer), so use it directly as the deposit key.
         let mut unchecked = Vec::new();
         for approval in &approvals {
             if unchecked.len() >= limit as usize {
                 break;
             }
 
-            let source_chain_id = if approval.chain_id == stc_bridge_id {
-                eth_bridge_id
-            } else {
-                stc_bridge_id
-            };
+            let source_chain_id = approval.chain_id;
 
             if verified_set.contains(&(source_chain_id, approval.nonce)) {
                 continue;

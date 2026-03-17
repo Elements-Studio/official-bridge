@@ -182,14 +182,14 @@ impl StcEventHandler {
                     let mut token_transfer_datas = Vec::new();
                     let mut notify_events = Vec::new();
 
-                    for log in logs {
+                    for log in &logs {
                         // Collect telegram notification events
-                        if let Some(notify_event) = self.create_notify_event(&log) {
+                        if let Some(notify_event) = self.create_notify_event(log) {
                             notify_events.push(notify_event);
                         }
 
                         self.process_log_for_db(
-                            &log,
+                            log,
                             true, // is_finalized
                             &mut token_transfers,
                             &mut token_transfer_datas,
@@ -198,6 +198,14 @@ impl StcEventHandler {
 
                     self.write_to_db(token_transfers, token_transfer_datas)
                         .await?;
+
+                    // Also store in TransferTracker for cross-chain correlation.
+                    // When STC events are immediately finalized (e.g. during historical
+                    // sync), the other chain's handler still needs the deposit in
+                    // TransferTracker to finalize its approval/claim.
+                    for log in &logs {
+                        self.process_log_to_memory(log).await?;
+                    }
 
                     // Send telegram notifications for finalized events
                     if let Some(ref tg) = self.telegram {
@@ -746,7 +754,10 @@ impl StcEventHandler {
                 // Send telegram notifications for newly finalized records
                 if let Some(ref tg) = self.telegram {
                     for record in &records {
-                        for event in create_notify_events_from_record(record, self.network) {
+                        for event in create_notify_events_from_record(
+                            record,
+                            self.network,
+                        ) {
                             let _ = tg.notify_finalized(NotifyChain::Starcoin, &event).await;
                         }
                     }

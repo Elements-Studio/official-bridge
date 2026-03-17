@@ -51,7 +51,7 @@ use starcoin_bridge_indexer_monitor::stc_indexer::{
     start_starcoin_syncer_with_ready_signal, StarcoinSyncerConfig, StarcoinSyncerResult,
 };
 use starcoin_bridge_indexer_monitor::telegram::{
-    create_telegram_notifier, SharedTelegramNotifier, TelegramConfig,
+    self, create_telegram_notifier, SharedTelegramNotifier, TelegramConfig,
 };
 use starcoin_bridge_pg_db::Db;
 use starcoin_bridge_pg_db::DbArgs;
@@ -312,20 +312,18 @@ fn create_telegram_notifier_from_config(config_path: Option<&PathBuf>) -> Shared
     let config = config_path
         .and_then(|p| monitor::config::MonitorConfig::from_file(p).ok())
         .map(|c| {
-            let env_label = format!(
-                "{} [{}] (<code>{}</code>) ↔ {} [{}] (<code>{}</code>)",
-                c.chain_a.name(),
-                c.chain_a.chain_id,
-                truncate_addr(&c.chain_a.contract_address),
-                c.chain_b.name(),
-                c.chain_b.chain_id,
-                truncate_addr(&c.chain_b.contract_address),
-            );
             TelegramConfig {
                 bot_token: c.telegram.bot_token,
                 chat_id: c.telegram.chat_id,
                 emergency_mention_users: c.telegram.emergency_mention_users,
-                env_label,
+                bridge_env: telegram::BridgeEnvInfo {
+                    eth_chain_name: c.chain_a.name(),
+                    eth_chain_id: c.chain_a.chain_id,
+                    eth_contract: truncate_addr(&c.chain_a.contract_address),
+                    stc_chain_name: c.chain_b.name(),
+                    stc_chain_id: c.chain_b.chain_id,
+                    stc_contract: truncate_addr(&c.chain_b.contract_address),
+                },
             }
         })
         .unwrap_or_default();

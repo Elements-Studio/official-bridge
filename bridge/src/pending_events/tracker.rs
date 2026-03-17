@@ -811,20 +811,24 @@ impl TransferTracker {
         let mut records = Vec::new();
 
         for (key, record) in pending.iter() {
+            // For deposits populated from finalized_deposits (cross-chain),
+            // the block number belongs to a different chain and cannot be
+            // compared with this handler's finalized_block. Treat them as
+            // already finalized since the originating handler verified them.
             let deposit_finalized = record
                 .deposit
                 .as_ref()
-                .map(|d| d.block_number <= finalized_block)
+                .map(|d| d.is_finalized || d.block_number <= finalized_block)
                 .unwrap_or(true);
             let approval_finalized = record
                 .approval
                 .as_ref()
-                .map(|a| a.block_number <= finalized_block)
+                .map(|a| a.is_finalized || a.block_number <= finalized_block)
                 .unwrap_or(true);
             let claim_finalized = record
                 .claim
                 .as_ref()
-                .map(|c| c.block_number <= finalized_block)
+                .map(|c| c.is_finalized || c.block_number <= finalized_block)
                 .unwrap_or(true);
 
             // Check if deposit exists either in this record or in finalized_deposits

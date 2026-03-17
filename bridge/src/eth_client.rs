@@ -86,8 +86,13 @@ impl EthClient<MeteredEthHttpProvier> {
         };
 
         // Create finality config based on network type
+        // For local/Anvil chains: use BlockCounting with 0 confirmations
+        // so events are immediately finalized (Anvil auto-mines on demand
+        // and never produces enough extra blocks for a positive threshold).
         let finality_config = if is_local {
-            FinalityConfig::eth_testnet().with_mode(FinalityMode::BlockCounting)
+            FinalityConfig::eth_testnet()
+                .with_mode(FinalityMode::BlockCounting)
+                .with_confirmation_blocks(0)
         } else {
             FinalityConfig::eth_mainnet()
         };
